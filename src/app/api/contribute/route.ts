@@ -41,25 +41,25 @@ export async function POST(request: Request) {
   }
 
   let compiledDraft: ContributionDraft | undefined;
-  const openrouter = createOpenRouter({ apiKey });
-  const agent = new ToolLoopAgent({
-    model: openrouter(process.env.AI_MODEL || "openai/gpt-5.6-luna"),
-    instructions:
-      "Compile this synthetic lived experience into a cautious bereavement workflow draft. Call compileDraft exactly once. Keep sourceType as lived experience, corroborationCount as 1, and status as draft. Do not present policy as authoritative.",
-    tools: {
-      compileDraft: tool({
-        description: "Return a reviewable synthetic contribution draft.",
-        inputSchema: contributionDraftSchema,
-        execute: async (draft) => {
-          compiledDraft = draft;
-          return draft;
-        },
-      }),
-    },
-    stopWhen: isStepCount(3),
-  });
 
   try {
+    const openrouter = createOpenRouter({ apiKey });
+    const agent = new ToolLoopAgent({
+      model: openrouter(process.env.AI_MODEL || "openai/gpt-5.6-luna"),
+      instructions:
+        "Compile this synthetic lived experience into a cautious bereavement workflow draft. Call compileDraft exactly once. Keep sourceType as lived experience, corroborationCount as 1, and status as draft. Do not present policy as authoritative.",
+      tools: {
+        compileDraft: tool({
+          description: "Return a reviewable synthetic contribution draft.",
+          inputSchema: contributionDraftSchema,
+          execute: async (draft) => {
+            compiledDraft = draft;
+            return draft;
+          },
+        }),
+      },
+      stopWhen: isStepCount(3),
+    });
     await agent.generate({ prompt: parsed.data.input });
     return NextResponse.json(compiledDraft ?? fallback);
   } catch {
