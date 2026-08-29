@@ -44,13 +44,23 @@ const memory = {
   workflows: new Map<string, StoredWorkflow>(),
 };
 
+/** Strictly increasing timestamps, so "newest first" is unambiguous in memory. */
+let lastMemoryTime = 0;
+
+function memoryTime(): string {
+  let now = Date.now();
+  if (now <= lastMemoryTime) now = lastMemoryTime + 1;
+  lastMemoryTime = now;
+  return new Date(now).toISOString();
+}
+
 const memoryStore: Store = {
   async saveCase(id, snapshot) {
     memory.cases.set(id, {
       id,
       workflowId: snapshot.workflowId,
       snapshot,
-      updatedAt: new Date().toISOString(),
+      updatedAt: memoryTime(),
     });
   },
   async listCases(limit) {
@@ -62,7 +72,7 @@ const memoryStore: Store = {
     memory.submissions.push({
       ...submission,
       id: memory.submissions.length + 1,
-      createdAt: new Date().toISOString(),
+      createdAt: memoryTime(),
     });
   },
   async listSubmissions(limit) {
