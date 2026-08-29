@@ -136,10 +136,13 @@ function StepRow({
   locale: Locale;
   note?: string;
 }) {
+  const title = translate(node.title, locale);
+  const detail = translate(node.detail, locale);
+
   return (
     <li className={styles.step}>
-      <strong>{translate(node.title, locale)}</strong>
-      <span>{translate(node.detail, locale)}</span>
+      <strong>{title}</strong>
+      {detail !== title && <span>{detail}</span>}
       {node.link && (
         <a href={node.link.url} target="_blank" rel="noopener noreferrer">
           {node.link.url}
