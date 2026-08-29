@@ -103,26 +103,26 @@ function databaseUrl(): string | null {
 function client(): ReturnType<typeof postgres> {
   if (!sql) {
     sql = postgres(databaseUrl()!, { max: 5, idle_timeout: 20 });
-    schemaReady = sql`
-      CREATE TABLE IF NOT EXISTS sahayak_cases (
+    schemaReady = (async () => {
+      await sql!`CREATE TABLE IF NOT EXISTS sahayak_cases (
         id TEXT PRIMARY KEY,
         workflow_id TEXT NOT NULL,
         snapshot JSONB NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
-      CREATE TABLE IF NOT EXISTS sahayak_submissions (
+      )`;
+      await sql!`CREATE TABLE IF NOT EXISTS sahayak_submissions (
         id BIGSERIAL PRIMARY KEY,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         workflow_id TEXT NOT NULL,
         input TEXT NOT NULL,
         draft JSONB NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS sahayak_workflows (
+      )`;
+      await sql!`CREATE TABLE IF NOT EXISTS sahayak_workflows (
         id TEXT PRIMARY KEY,
         definition JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
-    `.then(() => undefined);
+      )`;
+    })();
   }
   return sql;
 }
