@@ -1,0 +1,120 @@
+import { caseDoneNode, type StepType, type WorkflowDefinition, type WorkflowNode } from "./workflow";
+import type { Localized } from "./locale";
+
+/**
+ * Compiles what a user wrote into a journey the engine can run. Steps become a
+ * linear chain: each one asks, then opens the next; desk steps add an SLA
+ * clock; the closing Case Card step is appended automatically. One engine, no
+ * special cases.
+ */
+
+export type WorkflowStepSpec = {
+  title: string;
+  detail?: string;
+  ask?: string;
+  kind: "confirm" | "visit" | "desk";
+};
+
+export type WorkflowSpec = {
+  title: string;
+  subtitle?: string;
+  steps: WorkflowStepSpec[];
+};
+
+export const stepKinds: WorkflowStepSpec["kind"][] = ["confirm", "visit", "desk"];
+
+const both = (text: string): Localized => ({ hi: text, en: text });
+
+function slugify(title: string): string {
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  return base || "journey";
+}
+
+function stepType(kind: WorkflowStepSpec["kind"]): StepType {
+  if (kind === "visit") return "office-visit";
+  if (kind === "desk") return "desk-verification";
+  return "document-explain";
+}
+
+function visitCard(step: WorkflowStepSpec) {
+  return {
+    office: both(step.title),
+    why: both(step.detail || step.title),
+    carry: [
+      both("Original documents and a photocopy set"),
+      both("Your ID proof (Aadhaar or similar)"),
+      both("This Case Card, printed or on your phone"),
+    ],
+    script: both(`I have come for: ${step.title}. Please give me an acknowledgement.`),
+    expect: both("About 30 minutes"),
+    collect: both("The acknowledgement with any reference number written on it"),
+  };
+}
+
+/** A unique workflow id derived from the title. */
+export function assignWorkflowId(spec: WorkflowSpec, taken: Set<string>): string {
+  const base = `custom-${slugify(spec.title)}`;
+  let id = base;
+  for (let n = 2; taken.has(id); n += 1) id = `${base}-${n}`;
+  return id;
+}
+
+export function compileWorkflow(spec: WorkflowSpec, id: string): WorkflowDefinition {
+  const nodes: WorkflowNode[] = spec.steps.map((step, index) => {
+    const nextId = `step-${index + 2}`;
+    const nodeId = `step-${index + 1}`;
+    const title = both(step.title);
+    const detail = both(step.detail || step.title);
+    const ask = both(step.ask || `क्या मैं आगे बढ़ूँ? (Shall I go ahead with: ${step.title}?)`);
+
+    const onConfirm = step.kind === "desk"
+      ? {
+          state: "verifying" as const,
+          reply: both(`${step.title} — जमा हो गया। जाँच शुरू है, मैं नज़र रखता हूँ. (Submitted. The desk is checking — I am keeping watch.)`),
+        }
+      : {
+          state: "done" as const,
+          opens: nextId,
+          reply: both(`${step.title} — पूरा हुआ। अगला कदम देखिए. (Done. Here is the next step.)`),
+        };
+
+    return {
+      id: nodeId,
+      type: stepType(step.kind),
+      title,
+      detail,
+      ask,
+      visit: step.kind === "visit" ? visitCard(step) : undefined,
+      onConfirm,
+      verify: step.kind === "desk"
+        ? {
+            slaDays: 2,
+            outcome: {
+              state: "done" as const,
+              opens: nextId,
+              reply: both(`${step.title} — जाँच पूरी हुई, सब ठीक है. (The desk replied: all good, moving on.)`),
+            },
+          }
+        : undefined,
+    };
+  });
+
+  const last = nodes[nodes.length - 1];
+  if (last) {
+    // The final step opens the closing node instead of a step that does not exist.
+    if (last.onConfirm.state === "verifying") {
+      last.verify!.outcome.opens = "case-done";
+      delete last.onConfirm.opens;
+    } else {
+      last.onConfirm.opens = "case-done";
+    }
+  }
+
+  return {
+    id,
+    title: both(spec.title),
+    subtitle: both(spec.subtitle || spec.title),
+    firstNodeId: nodes[0]?.id ?? "case-done",
+    nodes: [...nodes, caseDoneNode],
+  };
+}

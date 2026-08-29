@@ -3,16 +3,16 @@ import { isStepCount, tool, ToolLoopAgent } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readIntent, type Intent } from "@/lib/intent";
-import { defaultLocale, locales, t, type Locale } from "@/lib/locale";
+import { defaultLocale, locales, t, type Localized, type Locale } from "@/lib/locale";
 import { isRateLimited } from "@/lib/rate-limit";
+import { store } from "@/lib/store";
 import {
   advanceDay,
   applyIntent,
   currentNode,
-  workflows,
   type CaseSnapshot,
 } from "@/lib/workflow";
-import type { Localized } from "@/lib/locale";
+import { resolveWorkflow } from "@/lib/workflow-registry";
 
 export const maxDuration = 30;
 
@@ -20,11 +20,12 @@ const PROVIDER_TIMEOUT_MS = 8_000;
 
 /**
  * A snapshot carries only node ids and states — never titles, questions, notes,
- * or policy text. All content is read from the bundled seed on the server, so a
- * client cannot introduce a step or a requirement that the workflow never had.
+ * or policy text. All content is read back from the journey's definition on the
+ * server, so a client cannot introduce a step or a requirement that the
+ * workflow never had.
  */
 const caseSnapshotSchema = z.object({
-  workflowId: z.enum(["bereavement", "scholarship"]),
+  workflowId: z.string().max(64),
   nodes: z.array(
     z.object({
       id: z.string().max(60),
@@ -42,19 +43,13 @@ const caseSnapshotSchema = z.object({
     ]),
   ).max(10),
   day: z.number().int().min(0).max(400),
-}).strict().refine(
-  (snapshot) => {
-    const seeded = workflows[snapshot.workflowId].nodes.map((node) => node.id);
-    return snapshot.nodes.length === seeded.length
-      && snapshot.nodes.every((node, index) => node.id === seeded[index]);
-  },
-  { message: "Case nodes do not match the bundled workflow." },
-);
+}).strict();
 
 const requestSchema = z.object({
   action: z.enum(["reply", "advance-day"]).default("reply"),
   message: z.string().trim().max(2_000).default(""),
   locale: z.enum(locales).default(defaultLocale),
+  caseId: z.string().trim().max(64).optional(),
   caseSnapshot: caseSnapshotSchema,
 }).strict().refine(
   ({ action, message }) => action === "advance-day" || message.length > 0,
@@ -121,7 +116,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Message and case are required." }, { status: 400 });
   }
 
-  const { action, message, locale, caseSnapshot } = parsed.data;
+  const { action, message, locale, caseId, caseSnapshot } = parsed.data;
+
+  // The journey's definition is the authority for content; the snapshot only
+  // carries ids and states. Both bundled and user-added journeys resolve here.
+  const definition = await resolveWorkflow(caseSnapshot.workflowId);
+  const seededIds = definition?.nodes.map((node) => node.id);
+  if (!seededIds
+    || caseSnapshot.nodes.length !== seededIds.length
+    || !caseSnapshot.nodes.every((node, index) => node.id === seededIds[index])
+  ) {
+    return NextResponse.json({ error: "Case nodes do not match the bundled workflow." }, { status: 400 });
+  }
+
   const localize = ({ caseSnapshot: next, reply }: { caseSnapshot: CaseSnapshot; reply: Localized }) =>
     ({ caseSnapshot: next, reply: t(reply, locale) });
 
@@ -142,5 +149,16 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json(localize(applyIntent(caseSnapshot, intent)));
+  const result = localize(applyIntent(caseSnapshot, intent));
+
+  // Persist the case so the citizen can come back to exactly this state.
+  if (caseId) {
+    try {
+      await store.saveCase(caseId, result.caseSnapshot);
+    } catch {
+      // The chat reply stands even if persistence hiccups.
+    }
+  }
+
+  return NextResponse.json(result);
 }

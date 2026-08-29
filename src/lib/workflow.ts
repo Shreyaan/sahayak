@@ -66,7 +66,7 @@ export type WorkflowNode = {
 };
 
 export type WorkflowDefinition = {
-  id: WorkflowId;
+  id: string;
   title: Localized;
   subtitle: Localized;
   firstNodeId: string;
@@ -83,15 +83,15 @@ export type CaseNode = {
 };
 
 export type CaseSnapshot = {
-  workflowId: WorkflowId;
+  workflowId: string;
   nodes: CaseNode[];
   artifacts: ArtifactId[];
   /** Simulated days elapsed. Demo time maps one simulated day to ten seconds. */
   day: number;
 };
 
-/** The closing node both journeys end on. */
-const caseDoneNode: WorkflowNode = {
+/** The closing node every journey ends on, including user-added ones. */
+export const caseDoneNode: WorkflowNode = {
   id: "case-done",
   type: "case-complete",
   title: { hi: "केस सार तैयार", en: "Case summary ready" },
@@ -538,12 +538,27 @@ export const workflows: Record<WorkflowId, WorkflowDefinition> = {
 
 export const workflowIds = Object.keys(workflows) as WorkflowId[];
 
+/**
+ * Every journey this process can run: the bundled seeds plus any user-added
+ * workflow registered at runtime. The engine reads only from this registry, so
+ * a custom journey runs on exactly the same transitions as a bundled one.
+ */
+const registry = new Map<string, WorkflowDefinition>(Object.entries(workflows));
+
+export function registerWorkflowDefinition(definition: WorkflowDefinition): void {
+  registry.set(definition.id, definition);
+}
+
+export function getWorkflowDefinition(id: string): WorkflowDefinition | undefined {
+  return registry.get(id);
+}
+
 export function isWorkflowId(value: unknown): value is WorkflowId {
   return typeof value === "string" && value in workflows;
 }
 
-export function findNode(workflowId: WorkflowId, nodeId: string): WorkflowNode | undefined {
-  return workflows[workflowId].nodes.find((node) => node.id === nodeId);
+export function findNode(workflowId: string, nodeId: string): WorkflowNode | undefined {
+  return getWorkflowDefinition(workflowId)?.nodes.find((node) => node.id === nodeId);
 }
 
 /** Step types used by both journeys — the composition proof. */
@@ -583,8 +598,9 @@ export function isClearedBlocker(caseSnapshot: CaseSnapshot, nodeId: string): bo
   return entry?.state === "done" && nodeNote(caseSnapshot, nodeId) !== undefined;
 }
 
-export function startCase(workflowId: WorkflowId): CaseSnapshot {
-  const workflow = workflows[workflowId];
+export function startCase(workflowId: string): CaseSnapshot {
+  const workflow = getWorkflowDefinition(workflowId);
+  if (!workflow) throw new Error(`Unknown workflow: ${workflowId}`);
 
   return {
     workflowId,
