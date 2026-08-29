@@ -546,3 +546,67 @@ header { flex-wrap: wrap; row-gap: 8px; }
   font-weight: 600;
   color: #5a6560;
 }
+
+/* "Easier with an AI clerk" callout at the top of contributor mode. */
+.ai-clerk-callout {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px dashed #b9c9be;
+  border-radius: 14px;
+  background: #f4f8f5;
+}
+
+.ai-clerk-callout h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.ai-clerk-callout p {
+  margin: 0 0 10px;
+  color: #4a5450;
+  font-size: .88rem;
+}
+
+.ai-endpoint small {
+  display: block;
+  color: #67736d;
+  font-size: .74rem;
+  margin-bottom: 4px;
+}
+
+.ai-endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-endpoint code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid #d7ded9;
+  font-size: .78rem;
+}
+
+.ai-endpoint button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--green, #1f6f4a);
+  color: white;
+  font-weight: 700;
+  font-size: .82rem;
+}
+
+.ai-learn {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--green, #1f6f4a);
+  font-weight: 700;
+  font-size: .84rem;
+}
