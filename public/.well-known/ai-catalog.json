@@ -1,0 +1,24 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Sahayak",
+    "identifier": "sahayak",
+    "documentationUrl": "https://sahayak-production-88bb.up.railway.app/agents"
+  },
+  "entries": [
+    {
+      "identifier": "urn:sahayak:mcp:workflows",
+      "displayName": "Sahayak Workflow Tools",
+      "type": "application/mcp-server-card+json",
+      "url": "https://sahayak-production-88bb.up.railway.app/mcp",
+      "transport": "streamable-http",
+      "description": "Read the citizen-journey catalog and propose a new workflow from a conversation. Every proposal is compiled by Sahayak's deterministic engine; the AI refines wording, never structure.",
+      "capabilities": ["WorkflowRead", "WorkflowProposals"],
+      "representativeQueries": [
+        "add my caste certificate process to Sahayak",
+        "what journeys does Sahayak already have",
+        "show me the stuck-scholarship journey steps"
+      ]
+    }
+  ]
+}
