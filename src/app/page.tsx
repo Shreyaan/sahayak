@@ -258,7 +258,6 @@ export default function Home() {
           </section>
 
           <section className="journeys">
-            <span className="synthetic">{common("synthetic")}</span>
             <div className="journey-grid">
               {workflowIds.map((id) => (
                 <button key={id} className="journey" type="button" onClick={() => startJourney(id)}>
@@ -279,13 +278,12 @@ export default function Home() {
                 <h2>{translate(workflow.title, locale)}</h2>
                 <p className="case-subtitle">{translate(workflow.subtitle, locale)}</p>
               </div>
-              <span className="synthetic">{common("synthetic")}</span>
             </div>
 
             <div className="demo-clock">
               <div>
                 <strong>{text("case.day", { day: caseSnapshot.day })}</strong>
-                <small>{text("case.simulatedTime")}</small>
+                <small>{text("case.demoTime")}</small>
               </div>
               <button className="secondary-action" type="button" disabled={busy} onClick={() => void advanceDay()}>
                 {text("case.advanceDay")}
@@ -420,9 +418,7 @@ export default function Home() {
       )}
 
       <footer>
-        <p>{common("disclaimer")}</p>
         <nav className="footer-links">
-          <a href="/honesty">{common("whatIsReal")}</a>
           <a href="/case-card?workflow=bereavement">{common("sampleCaseCard")}</a>
         </nav>
       </footer>
