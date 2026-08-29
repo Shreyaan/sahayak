@@ -3,30 +3,23 @@ import { isStepCount, tool, ToolLoopAgent } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { compileContribution, type ContributionDraft } from "@/lib/contribution";
+import { isRateLimited } from "@/lib/rate-limit";
 
 const requestSchema = z.object({
-  input: z.string().trim().min(1),
-});
+  input: z.string().trim().min(1).max(2_000),
+}).strict();
 
-const contributionDraftSchema = z.object({
+const contributionEnrichmentSchema = z.object({
   title: z.string().trim().min(1),
   steps: z.array(z.string().trim().min(1)).min(1),
-  matches: z.array(z.string().trim().min(1)),
   additions: z.array(z.string().trim().min(1)),
-  conflicts: z.array(
-    z.object({
-      field: z.string().trim().min(1),
-      submitted: z.string().trim().min(1),
-      bundled: z.string().trim().min(1),
-      reason: z.string().trim().min(1),
-    }),
-  ),
-  sourceType: z.literal("lived experience"),
-  corroborationCount: z.literal(1),
-  status: z.literal("draft"),
-});
+}).strict();
 
 export async function POST(request: Request) {
+  if (isRateLimited(request)) {
+    return NextResponse.json({ error: "Too many requests. Please try again shortly." }, { status: 429 });
+  }
+
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
@@ -40,7 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json(fallback);
   }
 
-  let compiledDraft: ContributionDraft | undefined;
+  let enrichment: Pick<ContributionDraft, "title" | "steps" | "additions"> | undefined;
 
   try {
     const openrouter = createOpenRouter({ apiKey });
@@ -51,17 +44,17 @@ export async function POST(request: Request) {
       tools: {
         compileDraft: tool({
           description: "Return a reviewable synthetic contribution draft.",
-          inputSchema: contributionDraftSchema,
+          inputSchema: contributionEnrichmentSchema,
           execute: async (draft) => {
-            compiledDraft = draft;
-            return draft;
+            enrichment = draft;
+            return { ...fallback, ...draft };
           },
         }),
       },
       stopWhen: isStepCount(3),
     });
-    await agent.generate({ prompt: parsed.data.input });
-    return NextResponse.json(compiledDraft ?? fallback);
+    await agent.generate({ prompt: parsed.data.input, timeout: 15_000 });
+    return NextResponse.json(enrichment ? { ...fallback, ...enrichment } : fallback);
   } catch {
     return NextResponse.json(fallback);
   }

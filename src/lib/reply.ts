@@ -6,6 +6,13 @@ export function replyToCitizen(
 ): { reply: string; caseSnapshot: CaseSnapshot } {
   const nextCase = advanceCase(caseSnapshot, message);
 
+  if (caseSnapshot.nodes[1]?.state === "needs-you") {
+    return {
+      reply: "बैंक क्लेम अभी आपकी ज़रूरत वाला कदम है। जरूरी कागज़ों की सूची तैयार रखें।",
+      caseSnapshot,
+    };
+  }
+
   if (nextCase === caseSnapshot) {
     return {
       reply: "Form 4 में नाम Shyam Sunder मिला है। क्या यह सही है?",

@@ -14,4 +14,13 @@ describe("advanceCase", () => {
   test("does not advance on an unrelated answer", () => {
     expect(advanceCase(initialCase, "मुझे समझ नहीं आया")).toEqual(initialCase);
   });
+
+  test.each([
+    "yesterday",
+    "नहीं, Shyam Sunder गलत है",
+    "yes नहीं",
+    "no, Shyam Sunder is wrong",
+  ])("does not advance on a negative or incidental match: %s", (message) => {
+    expect(advanceCase(initialCase, message)).toBe(initialCase);
+  });
 });

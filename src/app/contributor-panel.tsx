@@ -52,6 +52,7 @@ export function ContributorPanel() {
           onChange={(event) => setInput(event.target.value)}
           placeholder="Describe a synthetic bereavement claim experience…"
           rows={7}
+          maxLength={2_000}
         />
         <div className="contribution-actions">
           <button type="button" className="secondary-action" onClick={() => setInput(example)}>
@@ -102,8 +103,6 @@ export function ContributorPanel() {
           </button>
         </section>
       )}
-
-      <footer>Independent hackathon prototype. Not affiliated with any government body.</footer>
     </section>
   );
 }

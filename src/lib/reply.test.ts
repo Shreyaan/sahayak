@@ -16,4 +16,14 @@ describe("replyToCitizen", () => {
     expect(result.reply).toContain("बैंक क्लेम");
     expect(result.caseSnapshot.nodes[1]?.state).toBe("needs-you");
   });
+
+  test("keeps describing the bank claim action after the case has advanced", () => {
+    const advancedCase = replyToCitizen(initialCase, "हाँ").caseSnapshot;
+
+    const result = replyToCitizen(advancedCase, "अगला कदम क्या है?");
+
+    expect(result.reply).toContain("बैंक क्लेम");
+    expect(result.reply).not.toContain("क्या यह सही है");
+    expect(result.caseSnapshot).toEqual(advancedCase);
+  });
 });

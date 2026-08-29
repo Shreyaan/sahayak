@@ -41,6 +41,30 @@ describe("POST /api/contribute", () => {
     expect(response.status).toBe(400);
   });
 
+  test("rejects malformed JSON", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/contribute", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": crypto.randomUUID() },
+        body: "{not-json",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects contribution input longer than 2,000 characters", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/contribute", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": crypto.randomUUID() },
+        body: JSON.stringify({ input: "a".repeat(2_001) }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   test("falls back when OpenRouter setup fails", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     mock.module("@openrouter/ai-sdk-provider", () => ({
@@ -63,5 +87,58 @@ describe("POST /api/contribute", () => {
       corroborationCount: 1,
       status: "draft",
     });
+  });
+
+  test("preserves server-derived conflict evidence on the provider path", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mock.module("@openrouter/ai-sdk-provider", () => ({
+      createOpenRouter: () => () => ({ modelId: "test-model" }),
+    }));
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        private settings: any;
+
+        constructor(settings: any) {
+          this.settings = settings;
+        }
+
+        async generate(options: { timeout?: number }) {
+          expect(options.timeout).toBe(15_000);
+          await this.settings.tools.compileDraft.execute({
+            title: "Provider-enriched title",
+            steps: ["Provider-enriched step"],
+            additions: ["Provider-enriched addition"],
+          });
+          return { text: "ignored" };
+        }
+      },
+    }));
+    const response = await POST(
+      new Request("http://localhost/api/contribute", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": crypto.randomUUID() },
+        body: JSON.stringify({ input: "Form 4 listed Shyam Sundar for the bank claim." }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      title: "Provider-enriched title",
+      steps: ["Provider-enriched step"],
+      additions: ["Provider-enriched addition"],
+      sourceType: "lived experience",
+      corroborationCount: 1,
+      status: "draft",
+    });
+    expect(body.matches).toHaveLength(2);
+    expect(body.conflicts).toContainEqual(
+      expect.objectContaining({
+        submitted: "Shyam Sundar",
+        bundled: "Shyam Sunder",
+      }),
+    );
   });
 });
