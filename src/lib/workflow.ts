@@ -10,6 +10,7 @@ export type StepType =
   | "identity-compare"
   | "document-correction"
   | "office-visit"
+  | "online-action"
   | "desk-verification"
   | "bank-seeding-fix"
   | "grievance-file"
@@ -35,6 +36,13 @@ export type VisitCard = {
   collect: Localized;
 };
 
+/** A step the citizen completes on a website, with the exact URL to open. */
+export type WebLink = {
+  url: string;
+  action: Localized;
+  collect: Localized;
+};
+
 /** What one node does when an event resolves it. */
 type Outcome = {
   /** State this node moves to. */
@@ -56,6 +64,7 @@ export type WorkflowNode = {
   /** The clerk's question while this node is the current action. */
   ask: Localized;
   visit?: VisitCard;
+  link?: WebLink;
   /** Suggested-response chip wording, so a tap answers the actual question. */
   confirmLabel?: Localized;
   declineLabel?: Localized;

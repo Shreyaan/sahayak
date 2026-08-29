@@ -13,26 +13,75 @@ export type WorkflowStepSpec = {
   title: string;
   detail?: string;
   ask?: string;
-  kind: "confirm" | "visit" | "desk";
+  kind: "confirm" | "visit" | "desk" | "website";
+  url?: string;
 };
 
-export type WorkflowSpec = {
-  title: string;
-  subtitle?: string;
-  steps: WorkflowStepSpec[];
-};
+/**
+ * Website steps carry a URL the citizen will open, so it is validated like an
+ * untrusted input: public HTTPS only — no localhost, private ranges, or
+ * credentials in the URL.
+ */
+export function isSafePublicUrl(value: string): boolean {
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "https:" || url.username || url.password) return false;
+
+  const host = url.hostname.toLowerCase();
+  const parts = host.split(".").map(Number);
+  const isV4 = parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
+  const isPrivateV4 = isV4 && (
+    parts[0] === 0 || parts[0] === 10 || parts[0] === 127
+    || (parts[0] === 169 && parts[1] === 254)
+    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+    || (parts[0] === 192 && parts[1] === 168)
+  );
+  const isLocal = host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")
+    || host === "host.docker.internal" || /^\d+$/.test(host);
+
+  return !isPrivateV4 && !isLocal && host.includes(".");
+}
 
 /** Shared shape for every entry path: the web form and the MCP tool. */
-export const workflowSpecSchema = z.object({
+export type WorkflowSpec = z.infer<typeof workflowSpecShape>;
+
+export const workflowSpecShape = z.object({
   title: z.string().trim().min(3).max(120),
   subtitle: z.string().trim().max(160).optional(),
   steps: z.array(z.object({
     title: z.string().trim().min(1).max(160),
     detail: z.string().trim().max(500).optional(),
     ask: z.string().trim().max(300).optional(),
-    kind: z.enum(["confirm", "visit", "desk"]),
+    kind: z.enum(["confirm", "visit", "desk", "website"]),
+    url: z.string().trim().max(500).optional(),
   })).min(1).max(12),
 }).strict();
+
+export const workflowSpecSchema = workflowSpecShape.superRefine((spec, ctx) => {
+  spec.steps.forEach((step, index) => {
+    if (step.kind === "website") {
+      if (!step.url || !isSafePublicUrl(step.url)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["steps", index, "url"],
+          message: "A website step needs a public https:// URL.",
+        });
+      }
+    } else if (step.url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["steps", index, "url"],
+        message: "Only website steps carry a URL.",
+      });
+    }
+  });
+});
 
 /**
  * Deterministic review signals for a proposed workflow. These are advisory
@@ -91,6 +140,7 @@ function slugify(title: string): string {
 function stepType(kind: WorkflowStepSpec["kind"]): StepType {
   if (kind === "visit") return "office-visit";
   if (kind === "desk") return "desk-verification";
+  if (kind === "website") return "online-action";
   return "document-explain";
 }
 
@@ -123,7 +173,9 @@ export function compileWorkflow(spec: WorkflowSpec, id: string): WorkflowDefinit
     const nodeId = `step-${index + 1}`;
     const title = both(step.title);
     const detail = both(step.detail || step.title);
-    const ask = both(step.ask || `क्या मैं आगे बढ़ूँ? (Shall I go ahead with: ${step.title}?)`);
+    const ask = step.kind === "website"
+      ? both(`क्या आपने वेबसाइट पर यह काम पूरा कर लिया? (Have you finished this on the website: ${step.title}?)`)
+      : both(step.ask || `क्या मैं आगे बढ़ूँ? (Shall I go ahead with: ${step.title}?)`);
 
     const onConfirm = step.kind === "desk"
       ? {
@@ -143,6 +195,13 @@ export function compileWorkflow(spec: WorkflowSpec, id: string): WorkflowDefinit
       detail,
       ask,
       visit: step.kind === "visit" ? visitCard(step) : undefined,
+      link: step.kind === "website" && step.url
+        ? {
+            url: step.url,
+            action: both(`Open the website and complete: ${step.title}`),
+            collect: both("Any reference number or confirmation the site shows"),
+          }
+        : undefined,
       onConfirm,
       verify: step.kind === "desk"
         ? {

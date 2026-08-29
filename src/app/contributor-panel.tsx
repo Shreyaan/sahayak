@@ -21,7 +21,9 @@ type RecentSubmission = {
   status: string;
 };
 
-type StepDraft = { title: string; detail: string; kind: WorkflowStepSpec["kind"] };
+type StepDraft = { title: string; detail: string; kind: WorkflowStepSpec["kind"]; url: string };
+
+const stepKinds: WorkflowStepSpec["kind"][] = ["confirm", "visit", "website", "desk"];
 
 export function ContributorPanel({ onWorkflowAdded }: { onWorkflowAdded?: () => void }) {
   const text = useTranslations("citizen.contributor");
@@ -30,8 +32,7 @@ export function ContributorPanel({ onWorkflowAdded }: { onWorkflowAdded?: () => 
 
   return (
     <section className="contributor-panel" aria-labelledby="contributor-heading">
-      <p className="eyebrow">{text("eyebrow")}</p>
-      <h1 id="contributor-heading">{text("heading")}</h1>
+      <p className="eyebrow" id="contributor-heading">{text("eyebrow")}</p>
 
       <div className="contribution-tabs" role="tablist" aria-label={text("eyebrow")}>
         <button
@@ -53,6 +54,10 @@ export function ContributorPanel({ onWorkflowAdded }: { onWorkflowAdded?: () => 
           {text("tabs.workflow")}
         </button>
       </div>
+
+      <h1 className="visually-hidden">
+        {tab === "experience" ? text("tabs.experience") : text("tabs.workflow")}
+      </h1>
 
       {tab === "experience"
         ? <ExperienceTab text={text} locale={locale} />
@@ -271,7 +276,9 @@ function WorkflowTab({
 }) {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [steps, setSteps] = useState<StepDraft[]>([{ title: "", detail: "", kind: "confirm" }]);
+  const [steps, setSteps] = useState<StepDraft[]>([
+    { title: "", detail: "", kind: "confirm", url: "" },
+  ]);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -280,9 +287,13 @@ function WorkflowTab({
     setSteps((current) => current.map((step, i) => (i === index ? { ...step, ...patch } : step)));
   }
 
+  const urlInvalid = steps.some(
+    (step) => step.kind === "website" && !/^https:\/\/[^\s]+\.[^\s]+/.test(step.url.trim()),
+  );
+
   async function create(event: FormEvent) {
     event.preventDefault();
-    if (busy || !title.trim() || !steps.some((step) => step.title.trim())) return;
+    if (busy || !title.trim() || !steps.some((step) => step.title.trim()) || urlInvalid) return;
 
     setBusy(true);
     setError("");
@@ -300,6 +311,7 @@ function WorkflowTab({
             .map((step) => ({
               title: step.title.trim(),
               ...(step.detail.trim() ? { detail: step.detail.trim() } : {}),
+              ...(step.kind === "website" && step.url.trim() ? { url: step.url.trim() } : {}),
               kind: step.kind,
             })),
         }),
@@ -321,6 +333,7 @@ function WorkflowTab({
       <p className="contributor-copy">{text("builder.copy")}</p>
 
       <form className="contribution-form" onSubmit={create}>
+        <h2 className="builder-group">{text("builder.about")}</h2>
         <label htmlFor="workflow-title">{text("builder.titleLabel")}</label>
         <input
           id="workflow-title"
@@ -339,6 +352,8 @@ function WorkflowTab({
           maxLength={160}
         />
 
+        <h2 className="builder-group">{text("builder.stepsHeading")}</h2>
+
         {steps.map((step, index) => (
           <fieldset key={index} className="builder-step">
             <legend>{text("builder.stepN", { n: index + 1 })}</legend>
@@ -356,15 +371,38 @@ function WorkflowTab({
               maxLength={500}
               aria-label={text("builder.stepDetail")}
             />
-            <select
-              value={step.kind}
-              onChange={(event) => updateStep(index, { kind: event.target.value as StepDraft["kind"] })}
-              aria-label={text("builder.kind")}
-            >
-              <option value="confirm">{text("builder.kinds.confirm")}</option>
-              <option value="visit">{text("builder.kinds.visit")}</option>
-              <option value="desk">{text("builder.kinds.desk")}</option>
-            </select>
+            <div className="kind-picker" role="radiogroup" aria-label={text("builder.kind")}>
+              {stepKinds.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  role="radio"
+                  aria-checked={step.kind === kind}
+                  className={step.kind === kind ? "active" : ""}
+                  onClick={() => updateStep(index, { kind })}
+                >
+                  {text(`builder.kinds.${kind}`)}
+                </button>
+              ))}
+            </div>
+            {step.kind === "website" && (
+              <>
+                <label htmlFor={`step-url-${index}`}>{text("builder.urlLabel")}</label>
+                <input
+                  id={`step-url-${index}`}
+                  value={step.url}
+                  onChange={(event) => updateStep(index, { url: event.target.value })}
+                  placeholder={text("builder.urlPlaceholder")}
+                  maxLength={500}
+                  inputMode="url"
+                  className={urlInvalid && !step.url.trim() ? "" : undefined}
+                  aria-invalid={step.kind === "website" && step.url.trim() ? !/^https:\/\/[^\s]+\.[^\s]+/.test(step.url.trim()) : undefined}
+                />
+                {step.url.trim() && !/^https:\/\/[^\s]+\.[^\s]+/.test(step.url.trim()) && (
+                  <p className="contribution-error" role="alert">{text("builder.urlInvalid")}</p>
+                )}
+              </>
+            )}
             {steps.length > 1 && (
               <button
                 type="button"
@@ -381,11 +419,15 @@ function WorkflowTab({
           <button
             type="button"
             className="secondary-action"
-            onClick={() => setSteps((current) => [...current, { title: "", detail: "", kind: "confirm" }])}
+            onClick={() => setSteps((current) => [...current, { title: "", detail: "", kind: "confirm", url: "" }])}
           >
             {text("builder.addStep")}
           </button>
-          <button type="submit" className="primary-action" disabled={busy || !title.trim()}>
+          <button
+            type="submit"
+            className="primary-action"
+            disabled={busy || !title.trim() || urlInvalid || !steps.some((step) => step.title.trim())}
+          >
             {busy ? text("builder.creating") : text("builder.create")}
           </button>
         </div>

@@ -44,6 +44,10 @@
     "placeholder": "Or reply in your own words — say yes, no, or ask something…",
     "send": "Send reply"
   },
+  "web": {
+    "open": "Open the website",
+    "collect": "Note down any reference number the site shows."
+  },
   "visit": {
     "eyebrow": "Office visit",
     "carry": "Carry",
@@ -71,8 +75,11 @@
       "experience": "Share an experience",
       "workflow": "Add a workflow"
     },
+    "heading": "Turn an experience into a reviewable draft.",
     "builder": {
-      "copy": "Describe a process the way you lived it. Every step becomes part of Sahayak: the same engine, the same case card, the same speech — running your journey.",
+      "copy": "Describe the process the way you lived it. Sahayak turns it into the same kind of guided journey citizens already use.",
+      "about": "1 · About the journey",
+      "stepsHeading": "2 · The steps, in order",
       "titleLabel": "What is this journey about?",
       "titlePlaceholder": "e.g. Getting a caste certificate",
       "subtitleLabel": "One line about it (optional)",
@@ -80,12 +87,16 @@
       "stepN": "Step {n}",
       "stepTitle": "What happens at this step",
       "stepDetail": "What the citizen should know (optional)",
-      "kind": "Step type",
+      "kind": "Citizen action",
       "kinds": {
-        "confirm": "Ask and confirm",
-        "visit": "Office visit",
-        "desk": "Desk check with a wait"
+        "confirm": "Ask and continue",
+        "visit": "Visit an office",
+        "desk": "Wait for a desk reply",
+        "website": "Do something on a website"
       },
+      "urlLabel": "Website address (https://…)",
+      "urlPlaceholder": "https://portal.example.gov.in/track",
+      "urlInvalid": "Add the full https:// address of the page citizens should open.",
       "addStep": "Add a step",
       "remove": "Remove",
       "create": "Add this workflow",
