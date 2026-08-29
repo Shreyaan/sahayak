@@ -1,7 +1,9 @@
 "use client";
 
+import { useLocale, useTranslations } from "next-intl";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { artifactContent } from "@/lib/artifacts";
+import { t as translate, tList, type Locale } from "@/lib/locale";
 import { stopMediaStream } from "@/lib/media";
 import {
   findNode,
@@ -10,23 +12,12 @@ import {
   workflowIds,
   workflows,
   type CaseSnapshot,
-  type NodeState,
   type WorkflowId,
 } from "@/lib/workflow";
 import { ContributorPanel } from "./contributor-panel";
+import { LanguageSwitcher } from "./language-switcher";
 
 type Message = { from: "sahayak" | "citizen"; text: string };
-
-/** Hindi-first label, English secondary, for each of the five node states. */
-const stateLabel: Record<NodeState, string> = {
-  pending: "आगे · Pending",
-  "needs-you": "आपकी ज़रूरत · Needs you",
-  verifying: "जाँच जारी · Verifying",
-  blocked: "अटका · Blocked",
-  done: "पूरा · Done",
-};
-
-const requestFailed = "अभी जवाब नहीं मिला। कृपया फिर कोशिश करें।";
 
 /** Carries the live case to the Case Card, which re-reads all content from the seed. */
 function caseCardHref(caseSnapshot: CaseSnapshot): string {
@@ -40,6 +31,10 @@ function caseCardHref(caseSnapshot: CaseSnapshot): string {
 }
 
 export default function Home() {
+  const text = useTranslations("citizen");
+  const common = useTranslations("common");
+  const locale = useLocale() as Locale;
+
   const [contributorMode, setContributorMode] = useState(false);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -77,9 +72,14 @@ export default function Home() {
 
   useEffect(() => () => stopActiveRecording(true, false), []);
 
+  function sayBack(reply: string) {
+    setMessages((current) => [...current, { from: "sahayak", text: reply }]);
+  }
+
   /**
    * The server is the only authority for case transitions: whatever snapshot it
-   * returns replaces local state. Nothing is decided on the client.
+   * returns replaces local state. Nothing is decided on the client. The reply
+   * arrives already written in the active language.
    */
   async function ask(body: Record<string, unknown>, echo?: string) {
     if (busy || !caseSnapshot) return;
@@ -91,22 +91,22 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, caseSnapshot }),
+        body: JSON.stringify({ ...body, locale, caseSnapshot }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Request failed");
 
       setCaseSnapshot(result.caseSnapshot);
-      setMessages((current) => [...current, { from: "sahayak", text: result.reply }]);
+      sayBack(result.reply);
     } catch {
-      setMessages((current) => [...current, { from: "sahayak", text: requestFailed }]);
+      sayBack(text("error.request"));
     } finally {
       setBusy(false);
     }
   }
 
-  function reply(text: string) {
-    return ask({ action: "reply", message: text }, text);
+  function reply(value: string) {
+    return ask({ action: "reply", message: value }, value);
   }
 
   function advanceDay() {
@@ -115,11 +115,11 @@ export default function Home() {
 
   function send(event: FormEvent) {
     event.preventDefault();
-    const text = message.trim();
-    if (!text) return;
+    const value = message.trim();
+    if (!value) return;
 
     setMessage("");
-    void reply(text);
+    void reply(value);
   }
 
   function startJourney(workflowId: WorkflowId) {
@@ -129,8 +129,8 @@ export default function Home() {
     setCaseSnapshot(startCase(workflowId));
     setMessage("");
     setMessages([
-      { from: "sahayak", text: "नमस्ते। मैं सहायक हूँ। हर अगला कदम आपको दिखता रहेगा।" },
-      ...(first ? [{ from: "sahayak" as const, text: first.ask }] : []),
+      { from: "sahayak", text: text("chat.greeting") },
+      ...(first ? [{ from: "sahayak" as const, text: translate(first.ask, locale) }] : []),
     ]);
   }
 
@@ -164,6 +164,8 @@ export default function Home() {
         clearRecordingResources();
         const form = new FormData();
         form.append("audio", new File(chunks, "voice.webm", { type: mediaRecorder.mimeType }));
+        // The speech model needs to know which language it is listening to.
+        form.append("locale", locale);
 
         try {
           const response = await fetch("/api/transcribe", { method: "POST", body: form });
@@ -171,33 +173,30 @@ export default function Home() {
           if (!response.ok) throw new Error(result.error);
           setMessage(result.transcript);
         } catch {
-          setMessages((current) => [...current, { from: "sahayak", text: "आवाज़ समझ नहीं आई। जवाब लिखकर भेजें।" }]);
+          sayBack(text("error.transcribe"));
         }
       };
       mediaRecorder.onerror = () => {
         stopActiveRecording(true);
-        setMessages((current) => [...current, {
-          from: "sahayak",
-          text: "रिकॉर्डिंग रुक गई। आप लिखकर जारी रख सकते हैं।",
-        }]);
+        sayBack(text("error.recording"));
       };
       mediaRecorder.start();
       setRecording(true);
       recordingTimeout.current = setTimeout(() => stopActiveRecording(false), 30_000);
     } catch {
       stopActiveRecording(true);
-      setMessages((current) => [...current, { from: "sahayak", text: "माइक उपलब्ध नहीं है। आप लिखकर जारी रख सकते हैं।" }]);
+      sayBack(text("error.microphone"));
     }
   }
 
-  async function speak(text: string) {
+  async function speak(spoken: string) {
     let url: string | undefined;
 
     try {
       const response = await fetch("/api/speak", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: spoken, locale }),
       });
       if (!response.ok) throw new Error("Speech request failed");
 
@@ -209,10 +208,7 @@ export default function Home() {
         audio.play().catch(reject);
       });
     } catch {
-      setMessages((current) => [...current, {
-        from: "sahayak",
-        text: "अभी जवाब सुनाया नहीं जा सका। आप इसे यहीं पढ़ सकते हैं।",
-      }]);
+      sayBack(text("error.speech"));
     } finally {
       if (url) URL.revokeObjectURL(url);
     }
@@ -229,41 +225,46 @@ export default function Home() {
   const waiting = caseSnapshot?.nodes.some((node) => node.state === "verifying") ?? false;
   const chips = current
     ? [
-        current.confirmLabel ?? "हाँ",
-        ...(current.onDecline ? [current.declineLabel ?? "नहीं"] : []),
+        current.confirmLabel ? translate(current.confirmLabel, locale) : text("chat.yes"),
+        ...(current.onDecline
+          ? [current.declineLabel ? translate(current.declineLabel, locale) : text("chat.no")]
+          : []),
       ]
     : [];
 
   return (
     <main>
       <header>
-        <div className="brand">सहायक <span>Sahayak</span></div>
-        <button
-          className="author-link"
-          type="button"
-          aria-pressed={contributorMode}
-          onClick={toggleContributorMode}
-        >
-          {contributorMode ? "नागरिक · Citizen" : "योगदान दें · Contribute"}
-        </button>
+        <div className="brand">{common("brand")}</div>
+        <div className="header-actions">
+          <LanguageSwitcher />
+          <button
+            className="author-link"
+            type="button"
+            aria-pressed={contributorMode}
+            onClick={toggleContributorMode}
+          >
+            {contributorMode ? text("mode.citizen") : text("mode.contribute")}
+          </button>
+        </div>
       </header>
 
       {contributorMode ? <ContributorPanel /> : !caseSnapshot || !workflow ? (
         <>
           <section className="intro">
-            <p className="eyebrow">सरकारी काम, एक बातचीत में</p>
-            <h1>कौन सा काम अटका है?</h1>
-            <p>Pick a journey. We will keep every next step visible.</p>
+            <p className="eyebrow">{common("tagline")}</p>
+            <h1>{text("intro.heading")}</h1>
+            <p>{text("intro.lead")}</p>
           </section>
 
           <section className="journeys">
-            <span className="synthetic">SYNTHETIC DEMO</span>
+            <span className="synthetic">{common("synthetic")}</span>
             <div className="journey-grid">
               {workflowIds.map((id) => (
                 <button key={id} className="journey" type="button" onClick={() => startJourney(id)}>
-                  <strong>{workflows[id].title}</strong>
-                  <small>{workflows[id].subtitle}</small>
-                  <span className="journey-go">शुरू करें · Start</span>
+                  <strong>{translate(workflows[id].title, locale)}</strong>
+                  <small>{translate(workflows[id].subtitle, locale)}</small>
+                  <span className="journey-go">{text("journeyStart")}</span>
                 </button>
               ))}
             </div>
@@ -274,28 +275,28 @@ export default function Home() {
           <section className="case-card">
             <div className="case-heading">
               <div>
-                <p className="eyebrow">केस की स्थिति</p>
-                <h2>{workflow.title}</h2>
-                <p className="case-subtitle">{workflow.subtitle}</p>
+                <p className="eyebrow">{text("case.eyebrow")}</p>
+                <h2>{translate(workflow.title, locale)}</h2>
+                <p className="case-subtitle">{translate(workflow.subtitle, locale)}</p>
               </div>
-              <span className="synthetic">SYNTHETIC DEMO</span>
+              <span className="synthetic">{common("synthetic")}</span>
             </div>
 
             <div className="demo-clock">
               <div>
-                <strong>दिन {caseSnapshot.day} · Day {caseSnapshot.day}</strong>
-                <small>नमूना समय · Simulated demo time</small>
+                <strong>{text("case.day", { day: caseSnapshot.day })}</strong>
+                <small>{text("case.simulatedTime")}</small>
               </div>
               <button className="secondary-action" type="button" disabled={busy} onClick={() => void advanceDay()}>
-                एक दिन आगे
+                {text("case.advanceDay")}
               </button>
             </div>
 
             {waiting && (
               <p className="waiting" role="status">
                 <span className="waiting-dot" />
-                दफ़्तर की जाँच चल रही है। जवाब का इंतज़ार है — “एक दिन आगे” दबाकर समय बढ़ाइए.
-                <em>Waiting on a simulated desk.</em>
+                {text("case.waiting")}
+                <em>{text("case.waitingNote")}</em>
               </p>
             )}
 
@@ -304,37 +305,36 @@ export default function Home() {
                 const definition = findNode(caseSnapshot.workflowId, node.id);
                 if (!definition) return null;
                 const isCurrent = node.state === "needs-you";
+                const note = nodeNote(caseSnapshot, node.id);
 
                 return (
                   <li key={node.id} className={node.state}>
                     <span className="dot" />
                     <details open={isCurrent}>
                       <summary>
-                        <strong>{definition.title}</strong>
-                        <small>{stateLabel[node.state]}</small>
+                        <strong>{translate(definition.title, locale)}</strong>
+                        <small>{text(`state.${node.state}`)}</small>
                       </summary>
-                      <p className="node-detail">{definition.detail}</p>
-                      {nodeNote(caseSnapshot, node.id) && (
-                        <p className="node-note">{nodeNote(caseSnapshot, node.id)}</p>
-                      )}
+                      <p className="node-detail">{translate(definition.detail, locale)}</p>
+                      {note && <p className="node-note">{translate(note, locale)}</p>}
                       {isCurrent && definition.visit && (
                         <div className="visit-card">
-                          <p className="eyebrow">दफ़्तर जाना है · Office visit</p>
-                          <strong>{definition.visit.office}</strong>
-                          <p>{definition.visit.why}</p>
-                          <p className="visit-label">साथ ले जाइए · Carry</p>
+                          <p className="eyebrow">{text("visit.eyebrow")}</p>
+                          <strong>{translate(definition.visit.office, locale)}</strong>
+                          <p>{translate(definition.visit.why, locale)}</p>
+                          <p className="visit-label">{text("visit.carry")}</p>
                           <ul>
-                            {definition.visit.carry.map((item) => <li key={item}>{item}</li>)}
+                            {tList(definition.visit.carry, locale).map((item) => <li key={item}>{item}</li>)}
                           </ul>
-                          <p className="visit-label">काउंटर पर कहिए · Script</p>
-                          <p className="visit-script">“{definition.visit.script}”</p>
-                          <p className="visit-label">अनुमानित समय · Expect</p>
-                          <p>{definition.visit.expect}</p>
-                          <p className="visit-label">लेकर आइए · Collect</p>
-                          <p>{definition.visit.collect}</p>
+                          <p className="visit-label">{text("visit.script")}</p>
+                          <p className="visit-script">“{translate(definition.visit.script, locale)}”</p>
+                          <p className="visit-label">{text("visit.expect")}</p>
+                          <p>{translate(definition.visit.expect, locale)}</p>
+                          <p className="visit-label">{text("visit.collect")}</p>
+                          <p>{translate(definition.visit.collect, locale)}</p>
                           <p className="visit-warning">
-                            किसी दलाल या अनधिकृत एजेंट को पैसे मत दीजिए।
-                            <em>Do not pay an unauthorized agent.</em>
+                            {text("visit.warning")}
+                            <em>{text("visit.warningNote")}</em>
                           </p>
                         </div>
                       )}
@@ -346,13 +346,13 @@ export default function Home() {
 
             {caseSnapshot.artifacts.length > 0 && (
               <div className="artifacts">
-                <p className="eyebrow">बने हुए काग़ज़ · Artifacts</p>
+                <p className="eyebrow">{text("case.artifacts")}</p>
                 <ul>
                   {caseSnapshot.artifacts.map((id) => (
                     <li key={id}>
                       <a href={caseCardHref(caseSnapshot)}>
-                        <strong>{artifactContent[id].title}</strong>
-                        <small>{artifactContent[id].subtitle}</small>
+                        <strong>{translate(artifactContent[id].title, locale)}</strong>
+                        <small>{translate(artifactContent[id].subtitle, locale)}</small>
                       </a>
                     </li>
                   ))}
@@ -361,11 +361,11 @@ export default function Home() {
             )}
 
             <a className="case-card-link" href={caseCardHref(caseSnapshot)}>
-              Case Card खोलें · Open Case Card
+              {text("case.openCaseCard")}
             </a>
 
             <button className="reset-demo" type="button" onClick={resetDemo}>
-              दूसरा काम चुनें · Start over
+              {text("case.startOver")}
             </button>
           </section>
 
@@ -374,11 +374,18 @@ export default function Home() {
               <div key={index} className={`message ${item.from}`}>
                 <p className={`bubble ${item.from}`}>{item.text}</p>
                 {item.from === "sahayak" && (
-                  <button className="speak" type="button" onClick={() => speak(item.text)} aria-label="जवाब सुनें">🔊 सुनें</button>
+                  <button
+                    className="speak"
+                    type="button"
+                    onClick={() => speak(item.text)}
+                    aria-label={text("chat.listenLabel")}
+                  >
+                    🔊 {text("chat.listen")}
+                  </button>
                 )}
               </div>
             ))}
-            {busy && <p className="bubble sahayak">सोच रहा हूँ…</p>}
+            {busy && <p className="bubble sahayak">{text("chat.thinking")}</p>}
           </section>
 
           {chips.length > 0 && (
@@ -392,26 +399,31 @@ export default function Home() {
           )}
 
           <form className="chat-form" onSubmit={send}>
-            <button className={`mic ${recording ? "recording" : ""}`} type="button" onClick={toggleRecording} aria-label={recording ? "रिकॉर्डिंग रोकें" : "आवाज़ रिकॉर्ड करें"}>
+            <button
+              className={`mic ${recording ? "recording" : ""}`}
+              type="button"
+              onClick={toggleRecording}
+              aria-label={recording ? text("chat.recordStop") : text("chat.recordStart")}
+            >
               {recording ? "■" : "●"}
             </button>
             <input
-              aria-label="अपना जवाब लिखें"
+              aria-label={text("chat.inputLabel")}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="अपना जवाब लिखें…"
+              placeholder={text("chat.placeholder")}
               maxLength={2_000}
             />
-            <button className="send" disabled={busy} type="submit">भेजें</button>
+            <button className="send" disabled={busy} type="submit">{text("chat.send")}</button>
           </form>
         </>
       )}
 
       <footer>
-        <p>Independent hackathon prototype. Not affiliated with any government body.</p>
+        <p>{common("disclaimer")}</p>
         <nav className="footer-links">
-          <a href="/honesty">क्या असली, क्या नमूना · What is real</a>
-          <a href="/case-card?workflow=bereavement">नमूना Case Card · Sample</a>
+          <a href="/honesty">{common("whatIsReal")}</a>
+          <a href="/case-card?workflow=bereavement">{common("sampleCaseCard")}</a>
         </nav>
       </footer>
     </main>

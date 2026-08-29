@@ -94,6 +94,31 @@ grievance.
 Demo mode is deterministic: the same journey always produces the same rejection
 and the same breach. Simulated time is advanced by an explicit control.
 
+## Languages
+
+The whole product runs in Hindi or English — not just the interface, but the
+workflow content, the generated artifacts, the Case Card, and the spoken
+replies. `next-intl` handles interface strings; workflow and artifact content
+is `Localized` data carried in the seed itself, so one engine still drives both
+journeys in both languages.
+
+A first visit picks the language from the browser's `Accept-Language` header,
+and a switcher in the header overrides it at any time. The choice is kept in a
+cookie rather than the URL, so shared Case Card links keep working.
+
+Speech follows the language rather than being fixed to Hindi:
+
+- **Speech to text** — Hindi uses Deepgram's multilingual Nova-3, because Hindi
+  speakers code-switch into English constantly. English pins `en`, which is more
+  accurate than asking the multilingual model to guess.
+- **Text to speech** — ElevenLabs receives a `language_code`, which enforces the
+  language for the model and its text normalisation.
+- **The clerk** is told which language the citizen is speaking and is given the
+  question in that language, so it interprets free-form replies in either.
+
+A test walks both workflow seeds and every artifact recursively and fails if any
+string is missing a language, so a half-translated screen cannot ship.
+
 ## How the model is kept honest
 
 - The engine resolves the transition **before** the model is called, and the

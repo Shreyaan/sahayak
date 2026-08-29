@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetCorroboration } from "@/lib/corroboration";
+import { t, type Locale, type Localized } from "@/lib/locale";
 import { POST } from "./route";
 
 const originalKey = process.env.OPENROUTER_API_KEY;
@@ -11,6 +12,12 @@ afterEach(() => {
   process.env.OPENROUTER_API_KEY = originalKey;
   mock.restore();
 });
+
+
+/** Joins a localized list into one string so a test can search it. */
+function read(values: Localized[], locale: Locale): string {
+  return values.map((value) => t(value, locale)).join(" ");
+}
 
 describe("POST /api/contribute", () => {
   test("returns the deterministic contribution draft without OpenRouter", async () => {
@@ -130,18 +137,21 @@ describe("POST /api/contribute", () => {
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
-      title: "Provider-enriched title",
-      steps: ["Provider-enriched step"],
       sourceType: "lived experience",
       corroborationCount: 1,
       status: "needs review",
     });
-    expect(body.additions).toContain("Provider-enriched addition");
+    // The model wrote in Hindi (the default locale); English keeps the
+    // deterministic text, so the draft is never left half-written.
+    expect(body.title.hi).toBe("Provider-enriched title");
+    expect(body.title.en).not.toBe("Provider-enriched title");
+    expect(read(body.steps, "hi")).toContain("Provider-enriched step");
+    expect(read(body.additions, "hi")).toContain("Provider-enriched addition");
     expect(body.matches.length).toBeGreaterThan(0);
     expect(body.conflicts).toContainEqual(
       expect.objectContaining({
-        submitted: "Shyam Sundar",
-        bundled: "Shyam Sunder",
+        submitted: { hi: "Shyam Sundar", en: "Shyam Sundar" },
+        bundled: { hi: "Shyam Sunder", en: "Shyam Sunder" },
       }),
     );
   });
@@ -183,8 +193,9 @@ describe("POST /api/contribute", () => {
     );
     const body = await response.json();
 
-    expect(body.additions).toContain("Provider addition");
-    expect(body.additions.join(" ")).toContain("payment");
-    expect(body.additions.join(" ")).toContain("middleman");
+    expect(read(body.additions, "hi")).toContain("Provider addition");
+    // Server-derived flags survive in both languages.
+    expect(read(body.additions, "en")).toContain("payment");
+    expect(read(body.additions, "en")).toContain("middleman");
   });
 });

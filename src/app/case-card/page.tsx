@@ -1,7 +1,9 @@
 "use client";
 
+import { useLocale, useTranslations } from "next-intl";
 import { use } from "react";
 import { artifactContent } from "@/lib/artifacts";
+import { t as translate, tList, type Locale } from "@/lib/locale";
 import {
   advanceDay,
   applyCitizenReply,
@@ -10,6 +12,7 @@ import {
   isWorkflowId,
   nodeNote,
   startCase,
+  workflowIds,
   workflows,
   type ArtifactId,
   type CaseSnapshot,
@@ -17,6 +20,7 @@ import {
   type WorkflowId,
   type WorkflowNode,
 } from "@/lib/workflow";
+import { LanguageSwitcher } from "../language-switcher";
 import styles from "./case-card.module.css";
 
 const nodeStates: NodeState[] = ["pending", "needs-you", "verifying", "blocked", "done"];
@@ -89,7 +93,9 @@ function readCaseParam(raw: string): CaseSnapshot | null {
 
 /**
  * Walks the real engine to the end of a journey, so the sample card shows the
- * same rejection, SLA breach and recovery the live demo produces.
+ * same rejection, SLA breach and recovery the live demo produces. The replies
+ * are engine input, not UI copy, so they stay in one language whatever the
+ * reader's locale is.
  */
 function sampleCase(workflowId: WorkflowId): CaseSnapshot {
   let snapshot = startCase(workflowId);
@@ -111,30 +117,28 @@ function sampleCase(workflowId: WorkflowId): CaseSnapshot {
   return snapshot;
 }
 
-function Section({
-  hindi,
-  english,
-  children,
-}: {
-  hindi: string;
-  english: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>
-        {hindi} <span>{english}</span>
-      </h2>
+      <h2 className={styles.sectionTitle}>{title}</h2>
       {children}
     </section>
   );
 }
 
-function StepRow({ node, note }: { node: WorkflowNode; note?: string }) {
+function StepRow({
+  node,
+  locale,
+  note,
+}: {
+  node: WorkflowNode;
+  locale: Locale;
+  note?: string;
+}) {
   return (
     <li className={styles.step}>
-      <strong>{node.title}</strong>
-      <span>{node.detail}</span>
+      <strong>{translate(node.title, locale)}</strong>
+      <span>{translate(node.detail, locale)}</span>
       {note && <em className={styles.note}>{note}</em>}
     </li>
   );
@@ -146,6 +150,10 @@ export default function CaseCardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = use(searchParams);
+  const t = useTranslations("pages");
+  const common = useTranslations("common");
+  const locale = useLocale() as Locale;
+
   const caseParam = firstValue(params.case);
   const workflowParam = firstValue(params.workflow);
 
@@ -174,57 +182,67 @@ export default function CaseCardPage({
     && steps.some((step) => step.node.type === "case-complete" && step.state === "done");
   const visits = seed.nodes.filter((node) => node.visit);
 
+  /** A blocked or cleared node's reason, always read from the bundled seed. */
+  const noteFor = (nodeId: string): string | undefined => {
+    const note = nodeNote(snapshot, nodeId);
+    return note && translate(note, locale);
+  };
+
   return (
     <main className={styles.page}>
       <div className={styles.toolbar}>
         <a className={styles.back} href="/">
-          ← होम · Home
+          {t("caseCard.back")}
         </a>
-        <button className={styles.print} type="button" onClick={() => window.print()}>
-          प्रिंट करें · Print
-        </button>
+        <div className={styles.toolbarEnd}>
+          <LanguageSwitcher />
+          <button className={styles.print} type="button" onClick={() => window.print()}>
+            {t("caseCard.print")}
+          </button>
+        </div>
       </div>
 
       {unreadable && (
         <p className={styles.warning} role="status">
-          यह Case Card लिंक पढ़ा नहीं जा सका। नीचे एक नमूना केस दिखाया गया है.
-          <span>This Case Card link is not readable. A sample case is shown below.</span>
+          {t("caseCard.unreadable")}
         </p>
       )}
 
       <article className={styles.card}>
         <header className={styles.head}>
-          <p className={styles.eyebrow}>Sahayak · Case Card</p>
-          <h1>{seed.title}</h1>
-          <p className={styles.subtitle}>{seed.subtitle}</p>
+          <p className={styles.eyebrow}>{t("caseCard.eyebrow")}</p>
+          <h1>{translate(seed.title, locale)}</h1>
+          <p className={styles.subtitle}>{translate(seed.subtitle, locale)}</p>
           <p className={styles.meta}>
-            नमूना दिन {snapshot.day} · Simulated day {snapshot.day}
-            {isSample && " · नमूना केस · Sample case"}
+            {t("caseCard.day", { day: snapshot.day })}
+            {isSample && ` · ${t("caseCard.sampleCase")}`}
           </p>
-          <p className={styles.synthetic}>SYNTHETIC DEMO — all values are synthetic</p>
+          <p className={styles.synthetic}>{t("synthetic")}</p>
         </header>
 
-        <Section hindi="पूरी हुई कार्रवाइयाँ" english="Completed actions">
+        <Section title={t("caseCard.completed.title")}>
           {done.length > 0 ? (
             <ol className={styles.steps}>
               {done.map((step) => (
-                <StepRow key={step.node.id} node={step.node} />
+                <StepRow key={step.node.id} node={step.node} locale={locale} />
               ))}
             </ol>
           ) : (
-            <p className={styles.empty}>अभी कोई कदम पूरा नहीं हुआ · No completed actions yet</p>
+            <p className={styles.empty}>{t("caseCard.completed.empty")}</p>
           )}
         </Section>
 
-        <Section hindi="अभी की कार्रवाई" english="Current action">
+        <Section title={t("caseCard.current.title")}>
           {current ? (
             <ol className={styles.steps}>
-              <StepRow node={current.node} note={current.node.ask} />
+              <StepRow
+                node={current.node}
+                locale={locale}
+                note={translate(current.node.ask, locale)}
+              />
             </ol>
           ) : (
-            <p className={styles.empty}>
-              कोई कार्रवाई लंबित नहीं · No action pending
-            </p>
+            <p className={styles.empty}>{t("caseCard.current.empty")}</p>
           )}
           {verifying.length > 0 && (
             <ol className={styles.steps}>
@@ -232,44 +250,47 @@ export default function CaseCardPage({
                 <StepRow
                   key={step.node.id}
                   node={step.node}
-                  note="जाँच जारी (नमूना डेस्क) · In verification at a simulated desk"
+                  locale={locale}
+                  note={t("caseCard.current.verifying")}
                 />
               ))}
             </ol>
           )}
         </Section>
 
-        <Section hindi="रुकी हुई कार्रवाइयाँ" english="Blocked actions">
+        <Section title={t("caseCard.blocked.title")}>
           {blocked.length > 0 ? (
             <ol className={styles.steps}>
               {blocked.map((step) => (
                 <StepRow
                   key={step.node.id}
                   node={step.node}
-                  note={nodeNote(snapshot, step.node.id)}
+                  locale={locale}
+                  note={noteFor(step.node.id)}
                 />
               ))}
             </ol>
           ) : (
-            <p className={styles.empty}>कुछ भी रुका हुआ नहीं · Nothing blocked</p>
+            <p className={styles.empty}>{t("caseCard.blocked.empty")}</p>
           )}
         </Section>
 
         {cleared.length > 0 && (
-          <Section hindi="रास्ते में आई रुकावटें, जो हटीं" english="Blockers cleared along the way">
+          <Section title={t("caseCard.cleared.title")}>
             <ol className={styles.steps}>
               {cleared.map((step) => (
                 <StepRow
                   key={step.node.id}
                   node={step.node}
-                  note={nodeNote(snapshot, step.node.id)}
+                  locale={locale}
+                  note={noteFor(step.node.id)}
                 />
               ))}
             </ol>
           </Section>
         )}
 
-        <Section hindi="दफ़्तर के चक्कर" english="Office visits">
+        <Section title={t("caseCard.visits.title")}>
           {visits.length > 0 ? (
             visits.map((node) => {
               const visit = node.visit;
@@ -277,95 +298,91 @@ export default function CaseCardPage({
 
               return (
                 <div key={node.id} className={styles.visit}>
-                  <h3>{visit.office}</h3>
-                  <p className={styles.why}>{visit.why}</p>
+                  <h3>{translate(visit.office, locale)}</h3>
+                  <p className={styles.why}>{translate(visit.why, locale)}</p>
                   <dl className={styles.pairs}>
-                    <dt>साथ ले जाएँ · Carry</dt>
-                    <dd>{visit.carry.join(" · ")}</dd>
-                    <dt>काउंटर पर कहें · Script</dt>
-                    <dd>“{visit.script}”</dd>
-                    <dt>अनुमानित समय · Expect</dt>
-                    <dd>{visit.expect}</dd>
-                    <dt>क्या लेकर लौटें · Collect</dt>
-                    <dd>{visit.collect}</dd>
+                    <dt>{t("caseCard.visits.carry")}</dt>
+                    <dd>{tList(visit.carry, locale).join(" · ")}</dd>
+                    <dt>{t("caseCard.visits.script")}</dt>
+                    <dd>“{translate(visit.script, locale)}”</dd>
+                    <dt>{t("caseCard.visits.expect")}</dt>
+                    <dd>{translate(visit.expect, locale)}</dd>
+                    <dt>{t("caseCard.visits.collect")}</dt>
+                    <dd>{translate(visit.collect, locale)}</dd>
                   </dl>
                 </div>
               );
             })
           ) : (
-            <p className={styles.empty}>इस यात्रा में कोई दफ़्तर नहीं जाना है · No office visit needed</p>
+            <p className={styles.empty}>{t("caseCard.visits.empty")}</p>
           )}
-          <p className={styles.empty}>
-            किसी बिचौलिए को पैसा न दें · Do not pay an unauthorised agent.
-          </p>
+          <p className={styles.empty}>{t("caseCard.visits.noAgent")}</p>
         </Section>
 
-        <Section hindi="बने हुए काग़ज़" english="Generated artifacts">
+        <Section title={t("caseCard.artifacts.title")}>
           {snapshot.artifacts.length > 0 ? (
             snapshot.artifacts.map((id) => {
               const artifact = artifactContent[id];
 
               return (
                 <div key={id} className={styles.artifact}>
-                  <h3>{artifact.title}</h3>
-                  <p className={styles.why}>{artifact.subtitle}</p>
+                  <h3>{translate(artifact.title, locale)}</h3>
+                  <p className={styles.why}>{translate(artifact.subtitle, locale)}</p>
                   <ul className={styles.body}>
-                    {artifact.body.map((line) => (
-                      <li key={line}>{line}</li>
+                    {tList(artifact.body, locale).map((line, index) => (
+                      <li key={`${id}-${index}`}>{line}</li>
                     ))}
                   </ul>
-                  <p className={styles.draftLabel}>
-                    नमूना मसौदा — कहीं जमा नहीं किया गया · Demonstration draft, never submitted
-                  </p>
+                  <p className={styles.draftLabel}>{t("caseCard.artifacts.draftLabel")}</p>
                 </div>
               );
             })
           ) : (
-            <p className={styles.empty}>अभी कोई काग़ज़ नहीं बना · No artifacts generated yet</p>
+            <p className={styles.empty}>{t("caseCard.artifacts.empty")}</p>
           )}
         </Section>
 
-        <Section hindi="संदर्भ और स्थिति" english="References and status">
+        <Section title={t("caseCard.status.title")}>
           <dl className={styles.pairs}>
-            <dt>यात्रा · Journey</dt>
+            <dt>{t("caseCard.status.journey")}</dt>
             <dd>
-              {seed.title} ({seed.subtitle})
+              {translate(seed.title, locale)} ({translate(seed.subtitle, locale)})
             </dd>
-            <dt>केस की स्थिति · Case status</dt>
-            <dd>{complete ? "पूरा हुआ · Complete" : "चालू · In progress"}</dd>
-            <dt>हटाई गई रुकावटें · Blockers cleared</dt>
+            <dt>{t("caseCard.status.caseStatus")}</dt>
+            <dd>{complete ? t("caseCard.status.complete") : t("caseCard.status.inProgress")}</dd>
+            <dt>{t("caseCard.status.blockersCleared")}</dt>
             <dd>{cleared.length}</dd>
-            <dt>कदम पूरे · Steps done</dt>
+            <dt>{t("caseCard.status.stepsDone")}</dt>
             <dd>
               {done.length} / {steps.length}
             </dd>
-            <dt>नमूना दिन · Simulated day</dt>
+            <dt>{t("caseCard.status.simulatedDay")}</dt>
             <dd>{snapshot.day}</dd>
-            <dt>बने काग़ज़ · Artifacts</dt>
+            <dt>{t("caseCard.status.artifacts")}</dt>
             <dd>{snapshot.artifacts.length}</dd>
-            <dt>सरकारी डेस्क · Government desks</dt>
-            <dd>सिम्युलेटेड · Simulated</dd>
-            <dt>जमा किया गया · Submitted</dt>
-            <dd>कुछ भी नहीं · Nothing, anywhere</dd>
-            <dt>संदर्भ संख्या · Reference numbers</dt>
-            <dd>
-              असली संदर्भ काउंटर की पावती से ही मिलेगा · Real references come only from a counter
-              receipt
-            </dd>
+            <dt>{t("caseCard.status.desks")}</dt>
+            <dd>{t("caseCard.status.desksValue")}</dd>
+            <dt>{t("caseCard.status.submitted")}</dt>
+            <dd>{t("caseCard.status.submittedValue")}</dd>
+            <dt>{t("caseCard.status.references")}</dt>
+            <dd>{t("caseCard.status.referencesValue")}</dd>
           </dl>
         </Section>
 
         <footer className={styles.footer}>
-          <p>SYNTHETIC DEMO — all values are synthetic</p>
-          <p>Independent hackathon prototype. Not affiliated with any government body.</p>
+          <p>{t("synthetic")}</p>
+          <p>{common("disclaimer")}</p>
         </footer>
       </article>
 
       <nav className={styles.samples}>
-        <p className={styles.eyebrow}>नमूना केस · Sample cases</p>
-        <a href="/case-card?workflow=bereavement">मृत्यु के बाद के दावे · Bereavement</a>
-        <a href="/case-card?workflow=scholarship">अटकी हुई छात्रवृत्ति · Scholarship</a>
-        <a href="/honesty">क्या असली, क्या नमूना · Honesty</a>
+        <p className={styles.eyebrow}>{t("caseCard.samples.title")}</p>
+        {workflowIds.map((id) => (
+          <a key={id} href={`/case-card?workflow=${id}`}>
+            {translate(workflows[id].title, locale)}
+          </a>
+        ))}
+        <a href="/honesty">{t("caseCard.samples.honesty")}</a>
       </nav>
     </main>
   );

@@ -1,169 +1,136 @@
-import { sharedStepTypes, workflowIds, workflows, type StepType } from "@/lib/workflow";
+import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
+import { t as translate, type Locale } from "@/lib/locale";
+import { sharedStepTypes, workflowIds, workflows } from "@/lib/workflow";
+import { LanguageSwitcher } from "../language-switcher";
 import styles from "./honesty.module.css";
 
-export const metadata = {
-  title: "क्या असली, क्या नमूना · Honesty — Sahayak",
-};
+/** Message keys under `honesty.<group>.items`, in the order they are shown. */
+const realKeys = [
+  "conversation",
+  "engine",
+  "speechToText",
+  "textToSpeech",
+  "artifacts",
+  "contributions",
+] as const;
 
-const stepTypeLabels: Record<StepType, { hindi: string; english: string }> = {
-  "document-explain": { hindi: "काग़ज़ समझाना", english: "Explain a document" },
-  "identity-compare": { hindi: "नाम/पहचान मिलान", english: "Compare identity details" },
-  "document-correction": { hindi: "सुधार पत्र बनाना", english: "Draft a correction" },
-  "office-visit": { hindi: "दफ़्तर का चक्कर", english: "Office visit" },
-  "desk-verification": { hindi: "डेस्क पर जाँच", english: "Desk verification with an SLA clock" },
-  "bank-seeding-fix": { hindi: "बैंक सीडिंग सुधार", english: "Bank / NPCI seeding fix" },
-  "grievance-file": { hindi: "शिकायत दर्ज", english: "File a grievance" },
-  "rti-escalate": { hindi: "RTI escalation", english: "Draft an RTI escalation" },
-  "benefit-credit": { hindi: "राशि जमा", english: "Benefit credit" },
-  "case-complete": { hindi: "केस पूरा", english: "Case complete" },
-};
+const simulatedKeys = [
+  "desks",
+  "bankEpfo",
+  "payments",
+  "submission",
+  "rejection",
+  "sla",
+  "data",
+] as const;
 
-const real = [
-  { hindi: "बातचीत", english: "The Hindi-first conversation with the clerk." },
-  {
-    hindi: "वर्कफ़्लो इंजन",
-    english: "The deterministic workflow engine. It decides every state change, not the model.",
-  },
-  { hindi: "आवाज़ से लिखना", english: "Speech-to-text on your push-to-talk recording." },
-  { hindi: "जवाब बोलना", english: "Text-to-speech for the clerk's reply." },
-  { hindi: "काग़ज़ बनाना", english: "Artifact generation from structured case data." },
-  {
-    hindi: "योगदान कंपाइलर",
-    english: "The contributor draft compiler: it turns a lived experience into a structured draft.",
-  },
-];
+const limitKeys = [
+  "integration",
+  "credentials",
+  "payments",
+  "personalData",
+  "escalation",
+  "rti",
+] as const;
 
-const simulated = [
-  { hindi: "हर सरकारी डेस्क", english: "Every government desk and counter." },
-  { hindi: "बैंक और EPFO", english: "The bank and EPFO claim desks." },
-  { hindi: "PFMS / NPCI जमा", english: "PFMS and NPCI payment credit and bounce reasons." },
-  { hindi: "जमा करना", english: "Every submission. Nothing is ever sent anywhere." },
-  { hindi: "अस्वीकृति", english: "The rejection you see in the timeline." },
-  { hindi: "समय-सीमा पार होना", english: "The SLA breach and the clock behind it." },
-  { hindi: "सारा डेटा", english: "All names, numbers, offices, and references are synthetic." },
-];
+type Item = { key: string; label: string; detail: string; code?: string };
 
-const never = [
-  {
-    hindi: "कोई सरकारी सिस्टम से जुड़ाव नहीं है।",
-    english: "No live government integration of any kind.",
-  },
-  {
-    hindi: "कोई असली लॉगिन, पासवर्ड या क्रेडेंशियल नहीं।",
-    english: "No real credentials.",
-  },
-  { hindi: "कोई भुगतान नहीं, कोई OTP नहीं।", english: "No payments and no OTPs." },
-  {
-    hindi: "कोई आधार, PAN या निजी जानकारी नहीं ली जाती।",
-    english: "No Aadhaar, PAN, or personal data is collected.",
-  },
-  {
-    hindi: "escalation सिर्फ़ मसौदा बनकर क़तार में रहती है; प्रोटोटाइप से बाहर कुछ भी भेजने से पहले आपकी मंज़ूरी ली जाती है।",
-    english:
-      "Escalations are drafted and queued only. The citizen approves anything that would go outside the prototype.",
-  },
-  {
-    hindi: "RTI का 48-घंटे वाला जीवन-स्वतंत्रता प्रावधान सामान्य देरी पर लागू नहीं किया जाता।",
-    english: "The RTI 48-hour life-or-liberty period is not applied to ordinary delay.",
-  },
-];
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("pages");
+  return { title: t("honesty.metaTitle") };
+}
 
-export default function HonestyPage() {
-  const shared = sharedStepTypes();
+function ItemList({ items }: { items: Item[] }) {
+  return (
+    <ul className={styles.list}>
+      {items.map((item) => (
+        <li key={item.key}>
+          <strong>{item.label}</strong>
+          <span>{item.detail}</span>
+          {item.code && <code className={styles.code}>{item.code}</code>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export default async function HonestyPage() {
+  const t = await getTranslations("pages");
+  const common = await getTranslations("common");
+  const locale = (await getLocale()) as Locale;
+
+  /** Reads one labelled list out of the `pages` messages. */
+  const list = (group: string, keys: readonly string[]): Item[] =>
+    keys.map((key) => ({
+      key,
+      label: t(`honesty.${group}.items.${key}.label`),
+      detail: t(`honesty.${group}.items.${key}.detail`),
+    }));
+
+  const shared: Item[] = sharedStepTypes().map((type) => ({
+    key: type,
+    label: t(`honesty.stepTypes.${type}.label`),
+    detail: t(`honesty.stepTypes.${type}.detail`),
+    code: type,
+  }));
+
+  const journeys = workflowIds
+    .map((id) => `${translate(workflows[id].title, locale)} (${translate(workflows[id].subtitle, locale)})`)
+    .join(" · ");
 
   return (
     <main className={styles.page}>
-      <p className={styles.eyebrow}>Sahayak · Honesty</p>
-      <h1 className={styles.title}>क्या असली है, क्या नमूना है</h1>
-      <p className={styles.lede}>
-        What this prototype really does, and what it only pretends to do. Nothing here is hidden in
-        small print.
-      </p>
+      <div className={styles.topBar}>
+        <p className={styles.eyebrow}>{t("honesty.eyebrow")}</p>
+        <LanguageSwitcher />
+      </div>
+      <h1 className={styles.title}>{t("honesty.title")}</h1>
+      <p className={styles.lede}>{t("honesty.lede")}</p>
 
       <section className={`${styles.panel} ${styles.realPanel}`}>
         <h2>
-          असली · Real
-          <span>यह प्रोटोटाइप सचमुच यह करता है</span>
+          {t("honesty.real.title")}
+          <span>{t("honesty.real.subtitle")}</span>
         </h2>
-        <ul className={styles.list}>
-          {real.map((item) => (
-            <li key={item.english}>
-              <strong>{item.hindi}</strong>
-              <span>{item.english}</span>
-            </li>
-          ))}
-        </ul>
+        <ItemList items={list("real", realKeys)} />
       </section>
 
       <section className={`${styles.panel} ${styles.simulatedPanel}`}>
         <h2>
-          नमूना · Simulated
-          <span>यह सब सिर्फ़ दिखावे के लिए है</span>
+          {t("honesty.simulated.title")}
+          <span>{t("honesty.simulated.subtitle")}</span>
         </h2>
-        <ul className={styles.list}>
-          {simulated.map((item) => (
-            <li key={item.english}>
-              <strong>{item.hindi}</strong>
-              <span>{item.english}</span>
-            </li>
-          ))}
-        </ul>
-        <p className={styles.warning}>
-          कुछ भी, कहीं भी जमा नहीं किया जाता। · Nothing is ever submitted anywhere.
-        </p>
+        <ItemList items={list("simulated", simulatedKeys)} />
+        <p className={styles.warning}>{t("honesty.simulated.warning")}</p>
       </section>
 
       <section className={styles.panel}>
         <h2>
-          सीमाएँ · Hard limits
-          <span>यह प्रोटोटाइप यह कभी नहीं करता</span>
+          {t("honesty.limits.title")}
+          <span>{t("honesty.limits.subtitle")}</span>
         </h2>
-        <ul className={styles.list}>
-          {never.map((item) => (
-            <li key={item.english}>
-              <strong>{item.hindi}</strong>
-              <span>{item.english}</span>
-            </li>
-          ))}
-        </ul>
+        <ItemList items={list("limits", limitKeys)} />
       </section>
 
       <section className={styles.panel}>
         <h2>
-          एक ही इंजन · Composition proof
-          <span>
-            दोनों यात्राएँ इन्हीं साझा कदमों से बनी हैं · Both journeys are built from these shared
-            step types
-          </span>
+          {t("honesty.composition.title")}
+          <span>{t("honesty.composition.subtitle")}</span>
         </h2>
-        <p className={styles.journeys}>
-          {workflowIds.map((id) => `${workflows[id].title} (${workflows[id].subtitle})`).join(" · ")}
-        </p>
-        <ul className={styles.list}>
-          {shared.map((type) => (
-            <li key={type}>
-              <strong>{stepTypeLabels[type].hindi}</strong>
-              <span>{stepTypeLabels[type].english}</span>
-              <code className={styles.code}>{type}</code>
-            </li>
-          ))}
-        </ul>
-        <p className={styles.note}>
-          वर्कफ़्लो सिर्फ़ कदम का प्रकार और अपनी सामग्री देता है; कदम का व्यवहार एक ही इंजन तय करता है.
-          <span>
-            A workflow only names a step type and supplies its own content. One engine runs both.
-          </span>
-        </p>
+        <p className={styles.journeys}>{journeys}</p>
+        <ItemList items={shared} />
+        <p className={styles.note}>{t("honesty.composition.note")}</p>
       </section>
 
       <nav className={styles.links}>
-        <a href="/">← होम पर लौटें · Back to home</a>
-        <a href="/case-card?workflow=bereavement">नमूना Case Card · Sample Case Card</a>
+        <a href="/">{t("honesty.links.home")}</a>
+        <a href="/case-card?workflow=bereavement">{t("honesty.links.caseCard")}</a>
       </nav>
 
       <footer className={styles.footer}>
-        <p>SYNTHETIC DEMO — all values are synthetic</p>
-        <p>Independent hackathon prototype. Not affiliated with any government body.</p>
+        <p>{t("synthetic")}</p>
+        <p>{common("disclaimer")}</p>
       </footer>
     </main>
   );
