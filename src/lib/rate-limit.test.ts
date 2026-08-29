@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { isRateLimited } from "./rate-limit";
+import { isRateLimited, REQUEST_LIMIT } from "./rate-limit";
 
 describe("isRateLimited", () => {
-  test("allows 20 requests per IP in 60 seconds and rejects the next", () => {
+  test("allows the configured burst per IP in 60 seconds and rejects the next", () => {
     const request = new Request("http://localhost", {
       headers: { "x-forwarded-for": "198.51.100.10" },
     });
 
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < REQUEST_LIMIT; attempt += 1) {
       expect(isRateLimited(request, 1_000)).toBe(false);
     }
 
@@ -19,7 +19,7 @@ describe("isRateLimited", () => {
       headers: { "x-forwarded-for": "198.51.100.11" },
     });
 
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < REQUEST_LIMIT; attempt += 1) {
       isRateLimited(request, 1_000);
     }
 

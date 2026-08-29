@@ -5,6 +5,7 @@ import { artifactContent } from "@/lib/artifacts";
 import { stopMediaStream } from "@/lib/media";
 import {
   findNode,
+  nodeNote,
   startCase,
   workflowIds,
   workflows,
@@ -308,7 +309,9 @@ export default function Home() {
                         <small>{stateLabel[node.state]}</small>
                       </summary>
                       <p className="node-detail">{definition.detail}</p>
-                      {node.note && <p className="node-note">{node.note}</p>}
+                      {nodeNote(caseSnapshot, node.id) && (
+                        <p className="node-note">{nodeNote(caseSnapshot, node.id)}</p>
+                      )}
                       {isCurrent && definition.visit && (
                         <div className="visit-card">
                           <p className="eyebrow">दफ़्तर जाना है · Office visit</p>

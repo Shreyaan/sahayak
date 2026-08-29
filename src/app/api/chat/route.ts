@@ -2,18 +2,23 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { isStepCount, tool, ToolLoopAgent } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readIntent, type Intent } from "@/lib/intent";
 import { isRateLimited } from "@/lib/rate-limit";
 import {
   advanceDay,
-  applyCitizenReply,
+  applyIntent,
   currentNode,
   workflows,
   type CaseSnapshot,
 } from "@/lib/workflow";
 
+export const maxDuration = 30;
+
+const PROVIDER_TIMEOUT_MS = 8_000;
+
 /**
- * A snapshot carries only node ids and states — never titles, questions, or
- * policy text. All content is read from the bundled seed on the server, so a
+ * A snapshot carries only node ids and states — never titles, questions, notes,
+ * or policy text. All content is read from the bundled seed on the server, so a
  * client cannot introduce a step or a requirement that the workflow never had.
  */
 const caseSnapshotSchema = z.object({
@@ -22,7 +27,6 @@ const caseSnapshotSchema = z.object({
     z.object({
       id: z.string().max(60),
       state: z.enum(["pending", "needs-you", "verifying", "blocked", "done"]),
-      note: z.string().max(200).optional(),
       startedDay: z.number().int().min(0).max(400).optional(),
     }).strict(),
   ).max(20),
@@ -54,10 +58,49 @@ const requestSchema = z.object({
   { message: "A reply needs a message." },
 );
 
-function resolve(action: "reply" | "advance-day", caseSnapshot: CaseSnapshot, message: string) {
-  return action === "advance-day"
-    ? advanceDay(caseSnapshot)
-    : applyCitizenReply(caseSnapshot, message);
+const intentSchema = z.object({
+  intent: z.enum(["affirmative", "negative", "unclear"]),
+}).strict();
+
+/**
+ * The clerk's only job: read a free-form reply the deterministic reader could
+ * not classify. It returns a signal, never a decision — the engine still owns
+ * every transition, and an unusable answer simply stays `unknown`.
+ */
+async function readIntentWithClerk(
+  apiKey: string,
+  message: string,
+  question: string,
+): Promise<Intent> {
+  let observed: Intent = "unknown";
+
+  const openrouter = createOpenRouter({ apiKey });
+  const agent = new ToolLoopAgent({
+    model: openrouter(process.env.AI_MODEL || "openai/gpt-5.6-luna"),
+    instructions:
+      "You are Sahayak, a Hindi-first government-work clerk. You are given the question just asked "
+      + "and the citizen's reply. Call reportIntent exactly once to say whether the reply confirms "
+      + "the question, denies or corrects it, or is unclear. Report only what the citizen said. "
+      + "Never decide what happens to the case, and never state policy, fees, or outcomes.",
+    tools: {
+      reportIntent: tool({
+        description: "Report how the citizen's reply answers the question.",
+        inputSchema: intentSchema,
+        execute: async ({ intent }) => {
+          observed = intent === "unclear" ? "unknown" : intent;
+          return { recorded: true };
+        },
+      }),
+    },
+    stopWhen: isStepCount(2),
+  });
+
+  await agent.generate({
+    prompt: `Question: ${question}\nCitizen reply: ${message}`,
+    timeout: PROVIDER_TIMEOUT_MS,
+  });
+
+  return observed;
 }
 
 export async function POST(request: Request) {
@@ -72,40 +115,23 @@ export async function POST(request: Request) {
   }
 
   const { action, message, caseSnapshot } = parsed.data;
-  const authorized = resolve(action, caseSnapshot, message);
+
+  if (action === "advance-day") {
+    return NextResponse.json(advanceDay(caseSnapshot));
+  }
+
+  let intent = readIntent(message);
   const apiKey = process.env.OPENROUTER_API_KEY;
-
-  if (!apiKey || action === "advance-day") {
-    return NextResponse.json(authorized);
-  }
-
   const node = currentNode(caseSnapshot);
-  const openrouter = createOpenRouter({ apiKey });
-  const agent = new ToolLoopAgent({
-    model: openrouter(process.env.AI_MODEL || "openai/gpt-5.6-luna"),
-    instructions:
-      "You are Sahayak, a concise Hindi-first government-work clerk. Call getCaseOutcome before answering. "
-      + "Never add policy, fees, offices, requirements, timelines, or actions that are not in its result. "
-      + "You never decide whether a case advances.",
-    tools: {
-      getCaseOutcome: tool({
-        description: "The only authorized case transition, reply, and current step facts.",
-        inputSchema: z.object({}),
-        execute: async () => ({
-          reply: authorized.reply,
-          currentStep: node && { title: node.title, detail: node.detail, ask: node.ask },
-          caseSnapshot: authorized.caseSnapshot,
-        }),
-      }),
-    },
-    stopWhen: isStepCount(3),
-  });
 
-  try {
-    await agent.generate({ prompt: message, timeout: 15_000 });
-  } catch {
-    // The deterministic outcome below stands regardless of provider failure.
+  // The model is consulted only when the deterministic reader cannot decide.
+  if (intent === "unknown" && apiKey && node) {
+    try {
+      intent = await readIntentWithClerk(apiKey, message, node.ask);
+    } catch {
+      // An unreadable reply simply re-asks the question below.
+    }
   }
 
-  return NextResponse.json(authorized);
+  return NextResponse.json(applyIntent(caseSnapshot, intent));
 }
