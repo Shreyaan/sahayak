@@ -34,9 +34,15 @@ export async function listAllWorkflowDefinitions(): Promise<WorkflowDefinition[]
 
   const bundled = Object.values(workflows);
   const seen = new Set(bundled.map((definition) => definition.id));
-  const custom = [...(await store.listWorkflows())]
-    .map((row) => row.definition as WorkflowDefinition)
-    .filter((definition) => definition && typeof definition.id === "string" && !seen.has(definition.id));
+
+  let custom: WorkflowDefinition[] = [];
+  try {
+    custom = [...(await store.listWorkflows())]
+      .map((row) => row.definition as WorkflowDefinition)
+      .filter((definition) => definition && typeof definition.id === "string" && !seen.has(definition.id));
+  } catch {
+    // Without the store the bundled journeys are still listed.
+  }
 
   return [...bundled, ...custom];
 }
