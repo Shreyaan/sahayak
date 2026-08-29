@@ -1,0 +1,85 @@
+:root {
+  color-scheme: light;
+  --paper: #f7f1e7;
+  --ink: #17231d;
+  --marigold: #e69d18;
+  --green: #2f6b4f;
+  --line: #d9cfbf;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Arial, "Noto Sans Devanagari", sans-serif;
+}
+
+button, input { font: inherit; }
+button { cursor: pointer; }
+
+main {
+  width: min(100%, 520px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 18px 18px 92px;
+}
+
+header, .case-heading, form {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand { font-size: 1.3rem; font-weight: 800; }
+.brand span { margin-left: 6px; color: var(--green); font-size: .85rem; }
+.author-link { border: 0; background: none; color: var(--green); font-weight: 700; }
+
+.intro { padding: 44px 2px 24px; }
+.intro h1 { margin: 8px 0; font-size: clamp(2rem, 10vw, 3.6rem); line-height: 1.02; letter-spacing: -.05em; }
+.intro > p:last-child { max-width: 34rem; color: #536059; }
+.eyebrow { margin: 0; color: var(--green); font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+
+.case-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255,255,255,.55);
+  box-shadow: 0 14px 40px rgba(52, 43, 27, .07);
+}
+
+.case-heading h2 { margin: 4px 0 0; font-size: 1.15rem; }
+.synthetic { padding: 6px 8px; border-radius: 999px; background: #fff2ce; color: #7a530a; font-size: .62rem; font-weight: 800; }
+.timeline { margin: 22px 0 0; padding: 0; list-style: none; }
+.timeline li { display: flex; gap: 12px; padding: 10px 0; color: #7a827e; }
+.timeline li.needs-you { color: var(--ink); }
+.timeline li.done { color: var(--green); }
+.dot { width: 14px; height: 14px; margin-top: 3px; flex: 0 0 auto; border: 2px solid currentColor; border-radius: 50%; }
+.done .dot { background: var(--green); }
+.needs-you .dot { background: var(--marigold); border-color: var(--marigold); }
+.timeline strong, .timeline small { display: block; }
+.timeline small { margin-top: 3px; font-size: .72rem; }
+
+.chat { display: grid; gap: 10px; padding: 22px 0; }
+.message { display: grid; justify-items: start; gap: 4px; }
+.message.citizen { justify-items: end; }
+.bubble { width: fit-content; max-width: 86%; margin: 0; padding: 12px 14px; border-radius: 18px; line-height: 1.5; }
+.bubble.sahayak { background: white; border-bottom-left-radius: 4px; }
+.bubble.citizen { justify-self: end; background: var(--green); color: white; border-bottom-right-radius: 4px; }
+.speak { padding: 2px 8px; border: 0; background: none; color: var(--green); font-size: .72rem; }
+
+form { position: sticky; bottom: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.94); box-shadow: 0 12px 35px rgba(28, 35, 31, .14); }
+form input { width: 100%; min-width: 0; padding: 10px; border: 0; outline: 0; background: transparent; }
+form button { border: 0; border-radius: 12px; font-weight: 800; }
+form .send { min-width: 72px; padding: 10px 14px; background: var(--marigold); color: #2f250f; }
+form .mic { width: 42px; height: 42px; flex: 0 0 auto; background: #eee5d8; color: var(--green); }
+form .mic.recording { background: #8b2e24; color: white; }
+form button:disabled { opacity: .55; cursor: wait; }
+
+footer { padding-top: 24px; color: #727973; font-size: .7rem; text-align: center; }
+
+@media (min-width: 760px) {
+  main { padding-top: 30px; }
+}
