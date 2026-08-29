@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { locales, textToSpeechLanguage, defaultLocale } from "@/lib/locale";
 import { isRateLimited } from "@/lib/rate-limit";
 
-const requestSchema = z.object({ text: z.string().trim().min(1).max(2_000) });
+const requestSchema = z.object({
+  text: z.string().trim().min(1).max(2_000),
+  locale: z.enum(locales).default(defaultLocale),
+});
 
 export async function POST(request: Request) {
   if (isRateLimited(request)) {
@@ -34,6 +38,9 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           text: parsed.data.text,
           model_id: "eleven_flash_v2_5",
+          // Enforces the language for the model and its text normalisation, so
+          // English is not read with Hindi phonetics and vice versa.
+          language_code: textToSpeechLanguage[parsed.data.locale],
         }),
         signal: AbortSignal.timeout(15_000),
       },

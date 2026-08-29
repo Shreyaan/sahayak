@@ -69,4 +69,31 @@ describe("POST /api/transcribe", () => {
 
     expect(response.status).toBe(200);
   });
+
+  test.each([
+    ["hi", "multi"],
+    ["en", "en"],
+  ])("asks Deepgram for the right language for %s", async (locale, expected) => {
+    process.env.DEEPGRAM_API_KEY = "test-key";
+    let requestedUrl = "";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      requestedUrl = String(input);
+      return Response.json({
+        results: { channels: [{ alternatives: [{ transcript: "ok" }] }] },
+      });
+    }) as unknown as typeof fetch;
+
+    const form = new FormData();
+    form.append("audio", new File(["voice"], "voice.webm", { type: "audio/webm" }));
+    form.append("locale", locale);
+
+    const response = await POST(new Request("http://localhost/api/transcribe", {
+      method: "POST",
+      headers: { "x-forwarded-for": crypto.randomUUID() },
+      body: form,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(new URL(requestedUrl).searchParams.get("language")).toBe(expected);
+  });
 });
