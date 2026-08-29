@@ -1,5 +1,6 @@
 const WINDOW_MS = 60_000;
-const REQUEST_LIMIT = 20;
+// A full journey is ~13 requests, and a venue NAT puts every viewer on one IP.
+export const REQUEST_LIMIT = 120;
 
 type Window = { count: number; resetAt: number };
 

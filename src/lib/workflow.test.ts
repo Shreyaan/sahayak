@@ -3,6 +3,8 @@ import {
   advanceDay,
   applyCitizenReply,
   currentNode,
+  isClearedBlocker,
+  nodeNote,
   sharedStepTypes,
   startCase,
   workflowIds,
@@ -148,8 +150,63 @@ describe("complete journeys", () => {
   test("scholarship reuses the same engine through its bounce and breach", () => {
     const finished = confirmUntil(startCase("scholarship"), "case-done");
 
-    expect(stateOf(finished, "pfms-trace")).toBe("blocked");
-    expect(stateOf(finished, "verify-again")).toBe("blocked");
+    // Both were blocked in flight — the NPCI bounce and the SLA breach — and both
+    // were closed by their recovery step, which the Case Card reports as cleared.
+    expect(isClearedBlocker(finished, "pfms-trace")).toBe(true);
+    expect(isClearedBlocker(finished, "verify-again")).toBe(true);
+    expect(nodeNote(finished, "pfms-trace")).toContain("NPCI");
+    expect(nodeNote(finished, "verify-again")).toContain("समय-सीमा");
     expect(finished.artifacts).toEqual(["npci-checklist", "escalation-draft"]);
   });
+});
+
+describe("recovery closes what it recovered from", () => {
+  test("a rejected bank claim is closed once its fix is confirmed, keeping the reason", () => {
+    const submitted = applyCitizenReply(
+      confirmUntil(startCase("bereavement"), "bank-claim"),
+      "हाँ",
+    ).caseSnapshot;
+    const rejected = advanceDay(advanceDay(submitted).caseSnapshot).caseSnapshot;
+
+    expect(stateOf(rejected, "bank-claim")).toBe("blocked");
+    expect(nodeNote(rejected, "bank-claim")).toContain("अस्वीकृति");
+    expect(isClearedBlocker(rejected, "bank-claim")).toBe(false);
+
+    const recovered = applyCitizenReply(rejected, "हाँ").caseSnapshot;
+
+    expect(stateOf(recovered, "bank-claim")).toBe("done");
+    expect(isClearedBlocker(recovered, "bank-claim")).toBe(true);
+    expect(nodeNote(recovered, "bank-claim")).toContain("अस्वीकृति");
+  });
+
+  test("a declined name check is closed once the correction is added", () => {
+    const atNameCheck = confirmUntil(startCase("bereavement"), "name-check");
+    const declined = applyCitizenReply(atNameCheck, "नहीं").caseSnapshot;
+    const corrected = applyCitizenReply(declined, "हाँ").caseSnapshot;
+
+    expect(stateOf(declined, "name-check")).toBe("blocked");
+    expect(stateOf(corrected, "name-check")).toBe("done");
+    expect(isClearedBlocker(corrected, "name-check")).toBe(true);
+  });
+
+  test("a node that was never blocked carries no note", () => {
+    const confirmed = confirmUntil(startCase("bereavement"), "bank-claim");
+
+    expect(stateOf(confirmed, "name-check")).toBe("done");
+    expect(nodeNote(confirmed, "name-check")).toBeUndefined();
+    expect(isClearedBlocker(confirmed, "name-check")).toBe(false);
+  });
+
+  test.each(["bereavement", "scholarship"] as const)(
+    "a finished %s case leaves nothing blocked",
+    (workflowId) => {
+      const finished = applyCitizenReply(
+        confirmUntil(startCase(workflowId), "case-done"),
+        "हाँ",
+      ).caseSnapshot;
+
+      expect(finished.nodes.filter((node) => node.state === "blocked")).toHaveLength(0);
+      expect(finished.nodes.some((node) => isClearedBlocker(finished, node.id))).toBe(true);
+    },
+  );
 });

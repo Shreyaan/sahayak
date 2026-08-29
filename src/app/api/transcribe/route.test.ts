@@ -24,7 +24,7 @@ describe("POST /api/transcribe", () => {
 
   test("rejects unsupported audio types", async () => {
     const form = new FormData();
-    form.append("audio", new File(["voice"], "voice.ogg", { type: "audio/ogg" }));
+    form.append("audio", new File(["not audio"], "notes.txt", { type: "text/plain" }));
 
     const response = await POST(new Request("http://localhost/api/transcribe", {
       method: "POST",

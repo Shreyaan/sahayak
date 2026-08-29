@@ -87,7 +87,27 @@ describe("POST /api/chat", () => {
     expect(response.status).toBe(400);
   });
 
-  test("returns the server-authorized reply even when provider prose invents policy", async () => {
+  test("a clear reply never reaches the provider", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        async generate() {
+          throw new Error("the provider must not be called for a reply the reader can classify");
+        }
+      },
+    }));
+
+    const response = await POST(chatRequest({ message: "हाँ", caseSnapshot: bereavement }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
+    expect(body.caseSnapshot.nodes[0].state).toBe("done");
+  });
+
+  test("the clerk reads a free-form reply the deterministic reader cannot", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     let observedTimeout: number | undefined;
     mock.module("@openrouter/ai-sdk-provider", () => ({
@@ -105,22 +125,46 @@ describe("POST /api/chat", () => {
 
         async generate(options: { timeout?: number }) {
           observedTimeout = options.timeout;
-          await this.settings.tools.getCaseOutcome.execute({});
-          return { text: "Pay an invented ₹999 fee and your claim is already approved." };
+          await this.settings.tools.reportIntent.execute({ intent: "affirmative" });
+          return { text: "ignored" };
         }
       },
     }));
 
     const response = await POST(
-      chatRequest({ message: "हाँ", caseSnapshot: bereavement }),
+      chatRequest({ message: "जी बिल्कुल, वही लिखा है", caseSnapshot: bereavement }),
+    );
+    const body = await response.json();
+
+    expect(observedTimeout).toBe(8_000);
+    expect(body.caseSnapshot.nodes[0].state).toBe("done");
+    expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
+  });
+
+  test("clerk prose can never replace the authorized reply or invent policy", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mock.module("@openrouter/ai-sdk-provider", () => ({
+      createOpenRouter: () => () => ({ modelId: "test-model" }),
+    }));
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        async generate() {
+          return { text: "Pay an invented ₹999 fee — your claim is already approved." };
+        }
+      },
+    }));
+
+    const response = await POST(
+      chatRequest({ message: "पता नहीं क्या कहूँ", caseSnapshot: bereavement }),
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(observedTimeout).toBe(15_000);
-    expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
     expect(body.reply).not.toContain("₹99");
-    expect(body.caseSnapshot.nodes[0].state).toBe("done");
+    expect(body.reply).not.toContain("approved");
+    expect(body.caseSnapshot).toEqual(bereavement);
   });
 
   test("a negative reply cannot be turned into an advance by the provider", async () => {
@@ -132,7 +176,15 @@ describe("POST /api/chat", () => {
       isStepCount: () => () => false,
       tool: (definition: unknown) => definition,
       ToolLoopAgent: class {
+        private settings: any;
+
+        constructor(settings: any) {
+          this.settings = settings;
+        }
+
         async generate() {
+          // Even if the clerk misreports, the reader already read a denial.
+          await this.settings.tools.reportIntent.execute({ intent: "affirmative" });
           return { text: "आपका दावा स्वीकृत हो गया है।" };
         }
       },

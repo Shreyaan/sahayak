@@ -6,7 +6,9 @@ import {
   advanceDay,
   applyCitizenReply,
   currentNode,
+  isClearedBlocker,
   isWorkflowId,
+  nodeNote,
   startCase,
   workflows,
   type ArtifactId,
@@ -109,13 +111,6 @@ function sampleCase(workflowId: WorkflowId): CaseSnapshot {
   return snapshot;
 }
 
-/** The seed's own reason for a node being blocked. Never read from the link. */
-function blockedNote(node: WorkflowNode): string | undefined {
-  if (node.verify?.outcome.state === "blocked") return node.verify.outcome.note;
-  if (node.onDecline?.state === "blocked") return node.onDecline.note;
-  return undefined;
-}
-
 function Section({
   hindi,
   english,
@@ -173,6 +168,10 @@ export default function CaseCardPage({
   const current = steps.find((step) => step.state === "needs-you");
   const verifying = steps.filter((step) => step.state === "verifying");
   const blocked = steps.filter((step) => step.state === "blocked");
+  // A blocker the recovery step already closed: proof the case survived it.
+  const cleared = steps.filter((step) => isClearedBlocker(snapshot, step.node.id));
+  const complete = steps.every((step) => step.state === "done" || step.state === "pending")
+    && steps.some((step) => step.node.type === "case-complete" && step.state === "done");
   const visits = seed.nodes.filter((node) => node.visit);
 
   return (
@@ -244,13 +243,31 @@ export default function CaseCardPage({
           {blocked.length > 0 ? (
             <ol className={styles.steps}>
               {blocked.map((step) => (
-                <StepRow key={step.node.id} node={step.node} note={blockedNote(step.node)} />
+                <StepRow
+                  key={step.node.id}
+                  node={step.node}
+                  note={nodeNote(snapshot, step.node.id)}
+                />
               ))}
             </ol>
           ) : (
             <p className={styles.empty}>कुछ भी रुका हुआ नहीं · Nothing blocked</p>
           )}
         </Section>
+
+        {cleared.length > 0 && (
+          <Section hindi="रास्ते में आई रुकावटें, जो हटीं" english="Blockers cleared along the way">
+            <ol className={styles.steps}>
+              {cleared.map((step) => (
+                <StepRow
+                  key={step.node.id}
+                  node={step.node}
+                  note={nodeNote(snapshot, step.node.id)}
+                />
+              ))}
+            </ol>
+          </Section>
+        )}
 
         <Section hindi="दफ़्तर के चक्कर" english="Office visits">
           {visits.length > 0 ? (
@@ -314,6 +331,10 @@ export default function CaseCardPage({
             <dd>
               {seed.title} ({seed.subtitle})
             </dd>
+            <dt>केस की स्थिति · Case status</dt>
+            <dd>{complete ? "पूरा हुआ · Complete" : "चालू · In progress"}</dd>
+            <dt>हटाई गई रुकावटें · Blockers cleared</dt>
+            <dd>{cleared.length}</dd>
             <dt>कदम पूरे · Steps done</dt>
             <dd>
               {done.length} / {steps.length}

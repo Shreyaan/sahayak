@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
+import { baseAudioType, isAllowedAudioType, maxAudioBytes } from "@/lib/audio";
 import { isRateLimited } from "@/lib/rate-limit";
-
-const allowedAudioTypes = new Set(["audio/webm", "audio/mp4", "audio/mpeg", "audio/wav"]);
-const maxAudioBytes = 5 * 1024 * 1024;
 
 export async function POST(request: Request) {
   if (isRateLimited(request)) {
@@ -16,8 +14,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Audio is required." }, { status: 400 });
   }
 
-  if (!allowedAudioTypes.has(audio.type) || audio.size > maxAudioBytes) {
-    return NextResponse.json({ error: "Audio must be WebM, MP4, MP3, or WAV and no larger than 5 MB." }, { status: 400 });
+  if (!isAllowedAudioType(audio.type) || audio.size > maxAudioBytes) {
+    return NextResponse.json({ error: "Audio must be a WebM, OGG, MP4, MP3, or WAV recording no larger than 5 MB." }, { status: 400 });
   }
 
   const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -33,7 +31,7 @@ export async function POST(request: Request) {
         method: "POST",
         headers: {
           Authorization: `Token ${apiKey}`,
-          "Content-Type": audio.type,
+          "Content-Type": baseAudioType(audio.type),
         },
         body: await audio.arrayBuffer(),
         signal: AbortSignal.timeout(15_000),

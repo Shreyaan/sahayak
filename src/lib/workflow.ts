@@ -1,4 +1,4 @@
-import { readIntent } from "./intent";
+import { readIntent, type Intent } from "./intent";
 
 /**
  * The reusable typed step library. A workflow node names one of these types and
@@ -40,6 +40,8 @@ type Outcome = {
   state: NodeState;
   /** Node opened for the citizen next. */
   opens?: string;
+  /** A blocked node this outcome clears, so recovery closes what it recovered from. */
+  resolves?: string;
   reply: string;
   artifact?: ArtifactId;
   note?: string;
@@ -72,7 +74,6 @@ export type WorkflowId = "bereavement" | "scholarship";
 export type CaseNode = {
   id: string;
   state: NodeState;
-  note?: string;
   /** Simulated day this node entered `verifying`, so each SLA clock is its own. */
   startedDay?: number;
 };
@@ -130,6 +131,7 @@ const bereavement: WorkflowDefinition = {
       onConfirm: {
         state: "done",
         opens: "bank-claim",
+        resolves: "name-check",
         reply: "सुधार घोषणा केस में जुड़ गई। अब बैंक क्लेम तैयार करते हैं।",
         artifact: "correction-declaration",
       },
@@ -171,6 +173,7 @@ const bereavement: WorkflowDefinition = {
       onConfirm: {
         state: "done",
         opens: "epfo-claim",
+        resolves: "bank-claim",
         reply: "पत्र जुड़ गया। अब EPFO नॉमिनी दावा आगे बढ़ाते हैं।",
         artifact: "bank-letter",
       },
@@ -204,6 +207,7 @@ const bereavement: WorkflowDefinition = {
       onConfirm: {
         state: "done",
         opens: "case-done",
+        resolves: "epfo-claim",
         reply: "RTI मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
         artifact: "rti-draft",
       },
@@ -277,6 +281,7 @@ const scholarship: WorkflowDefinition = {
       onConfirm: {
         state: "done",
         opens: "verify-again",
+        resolves: "pfms-trace",
         reply: "सीडिंग अनुरोध दर्ज हो गया। अब दोबारा भुगतान जाँच लगाते हैं।",
         artifact: "npci-checklist",
       },
@@ -310,6 +315,7 @@ const scholarship: WorkflowDefinition = {
       onConfirm: {
         state: "done",
         opens: "credit",
+        resolves: "verify-again",
         reply: "शिकायत मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
         artifact: "escalation-draft",
       },
@@ -362,6 +368,36 @@ export function sharedStepTypes(): StepType[] {
     .filter((type) => scholarshipTypes.has(type));
 }
 
+/** The blocking outcome a node can hit, if any. */
+function blockingOutcome(node: WorkflowNode): Outcome | undefined {
+  if (node.verify?.outcome.state === "blocked") return node.verify.outcome;
+  if (node.onDecline?.state === "blocked") return node.onDecline;
+  return undefined;
+}
+
+/**
+ * The rejection or breach note a node carries, read from the bundled seed
+ * rather than from the snapshot, so no note can be supplied by a client.
+ * A node that was blocked and then recovered keeps its note as evidence.
+ */
+export function nodeNote(caseSnapshot: CaseSnapshot, nodeId: string): string | undefined {
+  const entry = caseSnapshot.nodes.find((node) => node.id === nodeId);
+  const definition = findNode(caseSnapshot.workflowId, nodeId);
+  const blocking = definition && blockingOutcome(definition);
+
+  if (!entry || !blocking) return undefined;
+  if (entry.state === "blocked") return blocking.note;
+
+  const recovery = caseSnapshot.nodes.find((node) => node.id === blocking.opens);
+  return entry.state === "done" && recovery?.state === "done" ? blocking.note : undefined;
+}
+
+/** True once a node was blocked and its recovery step completed. */
+export function isClearedBlocker(caseSnapshot: CaseSnapshot, nodeId: string): boolean {
+  const entry = caseSnapshot.nodes.find((node) => node.id === nodeId);
+  return entry?.state === "done" && nodeNote(caseSnapshot, nodeId) !== undefined;
+}
+
 export function startCase(workflowId: WorkflowId): CaseSnapshot {
   const workflow = workflows[workflowId];
 
@@ -394,10 +430,10 @@ function applyOutcome(
         return {
           ...node,
           state: outcome.state,
-          note: outcome.note,
           startedDay: outcome.state === "verifying" ? caseSnapshot.day : undefined,
         };
       }
+      if (node.id === outcome.resolves) return { ...node, state: "done" };
       if (node.id === outcome.opens) return { ...node, state: "needs-you" };
       return node;
     }),
@@ -414,6 +450,15 @@ export type EngineResult = { caseSnapshot: CaseSnapshot; reply: string };
  * for case transitions; the language model never decides one.
  */
 export function applyCitizenReply(caseSnapshot: CaseSnapshot, message: string): EngineResult {
+  return applyIntent(caseSnapshot, readIntent(message));
+}
+
+/**
+ * Applies an already-read confirmation signal. The signal may come from the
+ * deterministic reader or from the clerk model, but only this function decides
+ * what the case does with it.
+ */
+export function applyIntent(caseSnapshot: CaseSnapshot, intent: Intent): EngineResult {
   const node = currentNode(caseSnapshot);
 
   if (!node) {
@@ -425,8 +470,6 @@ export function applyCitizenReply(caseSnapshot: CaseSnapshot, message: string): 
         : "इस केस के सारे कदम पूरे हो चुके हैं। आपका Case Card तैयार है।",
     };
   }
-
-  const intent = readIntent(message);
 
   if (intent === "affirmative") {
     return {

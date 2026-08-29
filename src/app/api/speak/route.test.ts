@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { REQUEST_LIMIT } from "@/lib/rate-limit";
 import { POST } from "./route";
 
 const originalKey = process.env.ELEVENLABS_API_KEY;
@@ -25,14 +26,14 @@ describe("POST /api/speak", () => {
     expect(response.status).toBe(400);
   });
 
-  test("rate limits the twenty-first request from one IP", async () => {
+  test("rate limits the request after the configured burst from one IP", async () => {
     const makeRequest = () => new Request("http://localhost/api/speak", {
       method: "POST",
       headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.20" },
       body: JSON.stringify({ text: "hello" }),
     });
 
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < REQUEST_LIMIT; attempt += 1) {
       await POST(makeRequest());
     }
 
