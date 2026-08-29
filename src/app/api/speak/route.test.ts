@@ -60,4 +60,26 @@ describe("POST /api/speak", () => {
 
     expect(response.status).toBe(200);
   });
+
+  test.each([
+    ["hi", "hi"],
+    ["en", "en"],
+  ])("enforces the %s language on the speech model", async (locale, expected) => {
+    process.env.ELEVENLABS_API_KEY = "test-key";
+    process.env.ELEVENLABS_VOICE_ID = "test-voice";
+    let sentBody: any;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      return new Response("audio", { headers: { "content-type": "audio/mpeg" } });
+    }) as unknown as typeof fetch;
+
+    await POST(new Request("http://localhost/api/speak", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": crypto.randomUUID() },
+      body: JSON.stringify({ text: "test", locale }),
+    }));
+
+    expect(sentBody.language_code).toBe(expected);
+    expect(sentBody.model_id).toBe("eleven_flash_v2_5");
+  });
 });

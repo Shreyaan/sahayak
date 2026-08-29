@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { baseAudioType, isAllowedAudioType, maxAudioBytes } from "@/lib/audio";
+import { defaultLocale, isLocale, speechToTextLanguage } from "@/lib/locale";
 import { isRateLimited } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
@@ -18,6 +19,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Audio must be a WebM, OGG, MP4, MP3, or WAV recording no larger than 5 MB." }, { status: 400 });
   }
 
+  const requested = form?.get("locale");
+  const locale = isLocale(requested) ? requested : defaultLocale;
+
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "Voice input is not configured." }, { status: 503 });
@@ -25,8 +29,16 @@ export async function POST(request: Request) {
 
   let response: Response;
   try {
+    // Hindi speakers code-switch into English constantly, so Hindi uses the
+    // multilingual model while English pins the language for better accuracy.
+    const query = new URLSearchParams({
+      model: "nova-3",
+      language: speechToTextLanguage[locale],
+      smart_format: "true",
+    });
+
     response = await fetch(
-      "https://api.deepgram.com/v1/listen?model=nova-3&language=multi&smart_format=true",
+      `https://api.deepgram.com/v1/listen?${query}`,
       {
         method: "POST",
         headers: {
