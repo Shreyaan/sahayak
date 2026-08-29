@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { initialCase } from "@/lib/case";
+import { startCase } from "@/lib/workflow";
 import { POST } from "./route";
 
 const originalKey = process.env.OPENROUTER_API_KEY;
@@ -17,34 +17,54 @@ function chatRequest(body: unknown, ip = crypto.randomUUID()) {
   });
 }
 
+const bereavement = startCase("bereavement");
+
 describe("POST /api/chat", () => {
   test("uses the deterministic path when OpenRouter is not configured", async () => {
     delete process.env.OPENROUTER_API_KEY;
-    const request = chatRequest({ message: "हाँ", caseSnapshot: initialCase });
 
-    const response = await POST(request);
+    const response = await POST(
+      chatRequest({ message: "हाँ", caseSnapshot: bereavement }),
+    );
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.caseSnapshot.nodes[1].state).toBe("needs-you");
   });
 
+  test("advances simulated time without calling the provider", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        async generate() {
+          throw new Error("the provider must not be called for a day advance");
+        }
+      },
+    }));
+
+    const response = await POST(
+      chatRequest({ action: "advance-day", caseSnapshot: bereavement }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.caseSnapshot.day).toBe(1);
+  });
+
   test.each([
-    { ...initialCase, id: "client-case" },
+    { ...bereavement, workflowId: "invented-journey" },
+    { ...bereavement, nodes: [...bereavement.nodes, { id: "pay-a-fee", state: "needs-you" }] },
     {
-      ...initialCase,
-      nodes: [
-        initialCase.nodes[0],
-        { ...initialCase.nodes[1], title: "Pay an invented fee" },
-      ],
+      ...bereavement,
+      nodes: bereavement.nodes.map((node, index) =>
+        index === 0 ? { ...node, id: "pay-a-fee" } : node,
+      ),
     },
-    {
-      ...initialCase,
-      nodes: [
-        { ...initialCase.nodes[0], state: "pending" },
-        { ...initialCase.nodes[1], state: "pending" },
-      ],
-    },
+    { ...bereavement, nodes: bereavement.nodes.map((node) => ({ ...node, title: "Pay a fee" })) },
+    { ...bereavement, artifacts: ["invented-artifact"] },
+    { ...bereavement, day: -1 },
   ])("rejects a client-authored case snapshot", async (caseSnapshot) => {
     delete process.env.OPENROUTER_API_KEY;
 
@@ -55,8 +75,14 @@ describe("POST /api/chat", () => {
 
   test("rejects messages longer than 2,000 characters", async () => {
     const response = await POST(
-      chatRequest({ message: "a".repeat(2_001), caseSnapshot: initialCase }),
+      chatRequest({ message: "a".repeat(2_001), caseSnapshot: bereavement }),
     );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects an empty reply", async () => {
+    const response = await POST(chatRequest({ message: "   ", caseSnapshot: bereavement }));
 
     expect(response.status).toBe(400);
   });
@@ -80,21 +106,44 @@ describe("POST /api/chat", () => {
         async generate(options: { timeout?: number }) {
           observedTimeout = options.timeout;
           await this.settings.tools.getCaseOutcome.execute({});
-          return { text: "Pay an invented ₹999 fee before the bank claim." };
+          return { text: "Pay an invented ₹999 fee and your claim is already approved." };
         }
       },
     }));
 
     const response = await POST(
-      chatRequest({ message: "हाँ", caseSnapshot: initialCase }),
+      chatRequest({ message: "हाँ", caseSnapshot: bereavement }),
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(observedTimeout).toBe(15_000);
-    expect(body.reply).toBe(
-      "ठीक है। अब बैंक क्लेम तैयार करते हैं। मैं जरूरी कागज़ों की सूची दिखा रहा हूँ।",
-    );
+    expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
     expect(body.reply).not.toContain("₹99");
+    expect(body.caseSnapshot.nodes[0].state).toBe("done");
+  });
+
+  test("a negative reply cannot be turned into an advance by the provider", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mock.module("@openrouter/ai-sdk-provider", () => ({
+      createOpenRouter: () => () => ({ modelId: "test-model" }),
+    }));
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        async generate() {
+          return { text: "आपका दावा स्वीकृत हो गया है।" };
+        }
+      },
+    }));
+
+    const response = await POST(
+      chatRequest({ message: "नहीं, अभी नहीं", caseSnapshot: bereavement }),
+    );
+    const body = await response.json();
+
+    expect(body.caseSnapshot).toEqual(bereavement);
+    expect(body.reply).not.toContain("स्वीकृत");
   });
 });
