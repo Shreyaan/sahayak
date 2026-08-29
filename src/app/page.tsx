@@ -227,7 +227,12 @@ export default function Home() {
   const openNode = caseSnapshot?.nodes.find((node) => node.state === "needs-you");
   const current = caseSnapshot && openNode ? findNode(caseSnapshot.workflowId, openNode.id) : undefined;
   const waiting = caseSnapshot?.nodes.some((node) => node.state === "verifying") ?? false;
-  const chips = current ? (current.onDecline ? ["हाँ", "नहीं"] : ["हाँ"]) : [];
+  const chips = current
+    ? [
+        current.confirmLabel ?? "हाँ",
+        ...(current.onDecline ? [current.declineLabel ?? "नहीं"] : []),
+      ]
+    : [];
 
   return (
     <main>
