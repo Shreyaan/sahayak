@@ -1,1 +1,214 @@
-{}
+{
+  "synthetic": "SYNTHETIC DEMO — all values are synthetic",
+  "caseCard": {
+    "eyebrow": "Sahayak · Case Card",
+    "back": "← Home",
+    "print": "Print",
+    "unreadable": "This Case Card link is not readable. A sample case is shown below.",
+    "day": "Simulated day {day}",
+    "sampleCase": "Sample case",
+    "completed": {
+      "title": "Completed actions",
+      "empty": "No completed actions yet"
+    },
+    "current": {
+      "title": "Current action",
+      "empty": "No action pending",
+      "verifying": "In verification at a simulated desk"
+    },
+    "blocked": {
+      "title": "Blocked actions",
+      "empty": "Nothing blocked"
+    },
+    "cleared": {
+      "title": "Blockers cleared along the way"
+    },
+    "visits": {
+      "title": "Office visits",
+      "empty": "No office visit needed on this journey",
+      "carry": "Carry",
+      "script": "Say this at the counter",
+      "expect": "Expect",
+      "collect": "Collect",
+      "noAgent": "Do not pay an unauthorised agent."
+    },
+    "artifacts": {
+      "title": "Generated artifacts",
+      "empty": "No artifacts generated yet",
+      "draftLabel": "Demonstration draft, never submitted"
+    },
+    "status": {
+      "title": "References and status",
+      "journey": "Journey",
+      "caseStatus": "Case status",
+      "complete": "Complete",
+      "inProgress": "In progress",
+      "blockersCleared": "Blockers cleared",
+      "stepsDone": "Steps done",
+      "simulatedDay": "Simulated day",
+      "artifacts": "Artifacts",
+      "desks": "Government desks",
+      "desksValue": "Simulated",
+      "submitted": "Submitted",
+      "submittedValue": "Nothing, anywhere",
+      "references": "Reference numbers",
+      "referencesValue": "Real references come only from a counter receipt"
+    },
+    "samples": {
+      "title": "Sample cases",
+      "honesty": "What is real"
+    }
+  },
+  "honesty": {
+    "metaTitle": "What is real, what is simulated — Sahayak",
+    "eyebrow": "Sahayak · Honesty",
+    "title": "What is real, what is simulated",
+    "lede": "What this prototype really does, and what it only pretends to do. Nothing here is hidden in small print.",
+    "real": {
+      "title": "Real",
+      "subtitle": "This prototype genuinely does all of this",
+      "items": {
+        "conversation": {
+          "label": "The conversation",
+          "detail": "The Hindi-first conversation with the clerk."
+        },
+        "engine": {
+          "label": "The workflow engine",
+          "detail": "A deterministic engine decides every state change, not the model."
+        },
+        "speechToText": {
+          "label": "Speech to text",
+          "detail": "Real speech-to-text on your push-to-talk recording."
+        },
+        "textToSpeech": {
+          "label": "Text to speech",
+          "detail": "The clerk's reply is really spoken aloud."
+        },
+        "artifacts": {
+          "label": "Artifact generation",
+          "detail": "Drafts are really generated from structured case data."
+        },
+        "contributions": {
+          "label": "The contribution compiler",
+          "detail": "It turns a lived experience into a structured, reviewable draft."
+        }
+      }
+    },
+    "simulated": {
+      "title": "Simulated",
+      "subtitle": "All of this is for demonstration only",
+      "warning": "Nothing is ever submitted anywhere.",
+      "items": {
+        "desks": {
+          "label": "Every government desk",
+          "detail": "Every office and counter in the journey is simulated."
+        },
+        "bankEpfo": {
+          "label": "The bank and EPFO desks",
+          "detail": "The bank and EPFO claim desks are simulated."
+        },
+        "payments": {
+          "label": "PFMS and NPCI credits",
+          "detail": "PFMS and NPCI payment credits and bounce reasons are simulated."
+        },
+        "submission": {
+          "label": "Every submission",
+          "detail": "Every submission is simulated. Nothing is ever sent anywhere."
+        },
+        "rejection": {
+          "label": "The rejection",
+          "detail": "The rejection you see in the timeline is simulated."
+        },
+        "sla": {
+          "label": "The SLA breach",
+          "detail": "The SLA breach and the clock behind it are simulated."
+        },
+        "data": {
+          "label": "All the data",
+          "detail": "All names, numbers, offices, and references are synthetic."
+        }
+      }
+    },
+    "limits": {
+      "title": "Hard limits",
+      "subtitle": "This prototype never does any of this",
+      "items": {
+        "integration": {
+          "label": "No government integration",
+          "detail": "No live government integration of any kind."
+        },
+        "credentials": {
+          "label": "No credentials",
+          "detail": "No real logins, passwords, or credentials."
+        },
+        "payments": {
+          "label": "No payments and no OTPs",
+          "detail": "No money is taken here and no OTP is ever requested."
+        },
+        "personalData": {
+          "label": "No personal data",
+          "detail": "No Aadhaar, PAN, or personal data is collected."
+        },
+        "escalation": {
+          "label": "Escalations stay drafts",
+          "detail": "Escalations are drafted and queued only. The citizen approves anything that would go outside the prototype."
+        },
+        "rti": {
+          "label": "No 48-hour RTI claim",
+          "detail": "The RTI 48-hour life-or-liberty period is not applied to ordinary delay."
+        }
+      }
+    },
+    "composition": {
+      "title": "Composition proof",
+      "subtitle": "Both journeys are built from these shared step types",
+      "note": "A workflow only names a step type and supplies its own content. One engine runs both."
+    },
+    "stepTypes": {
+      "document-explain": {
+        "label": "Explain a document",
+        "detail": "Explain one document in plain language."
+      },
+      "identity-compare": {
+        "label": "Compare identity details",
+        "detail": "Match a name or identity detail across two records."
+      },
+      "document-correction": {
+        "label": "Draft a correction",
+        "detail": "Draft a letter that fixes a spelling or a detail."
+      },
+      "office-visit": {
+        "label": "Office visit",
+        "detail": "One counter trip, with what to carry and what to say."
+      },
+      "desk-verification": {
+        "label": "Desk verification",
+        "detail": "Verification at a desk, with an SLA clock running."
+      },
+      "bank-seeding-fix": {
+        "label": "Bank / NPCI seeding fix",
+        "detail": "Fix the NPCI seeding on a bank account."
+      },
+      "grievance-file": {
+        "label": "File a grievance",
+        "detail": "File a formal grievance on the portal."
+      },
+      "rti-escalate": {
+        "label": "RTI escalation",
+        "detail": "Draft an RTI application about the delay."
+      },
+      "benefit-credit": {
+        "label": "Benefit credit",
+        "detail": "The benefit amount reaching the account."
+      },
+      "case-complete": {
+        "label": "Case complete",
+        "detail": "The journey ends with everything accounted for."
+      }
+    },
+    "links": {
+      "home": "← Back to home",
+      "caseCard": "Sample Case Card"
+    }
+  }
+}

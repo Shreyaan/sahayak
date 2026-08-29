@@ -1,24 +1,30 @@
 "use client";
 
+import { useLocale, useTranslations } from "next-intl";
 import { FormEvent, useState } from "react";
-import type { ContributionDraft } from "@/lib/contribution";
+import type { ContributionDraft, ContributionStatus } from "@/lib/contribution";
+import { t as translate, tList, type Locale } from "@/lib/locale";
 
-const examples = [
-  {
-    label: "Bereavement example",
-    text: "After my father died, I used Form 4 for a bank claim. The claimant name appeared as Shyam Sundar.",
-  },
-  {
-    label: "Scholarship example",
-    text: "NSP showed Released to PFMS but nothing reached my account. The branch said NPCI seeding was missing.",
-  },
-];
+/** Message key for each status, so the badge reads in the active language. */
+const statusKey: Record<ContributionStatus, string> = {
+  draft: "status.draft",
+  "needs review": "status.needsReview",
+  "publishable draft": "status.publishableDraft",
+};
 
 export function ContributorPanel() {
+  const text = useTranslations("citizen.contributor");
+  const locale = useLocale() as Locale;
+
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState<ContributionDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const examples = [
+    { label: text("examples.bereavementLabel"), text: text("examples.bereavementText") },
+    { label: text("examples.scholarshipLabel"), text: text("examples.scholarshipText") },
+  ];
 
   async function compile(event: FormEvent) {
     event.preventDefault();
@@ -35,10 +41,10 @@ export function ContributorPanel() {
         body: JSON.stringify({ input: value }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Could not compile the draft.");
+      if (!response.ok) throw new Error(result.error || text("error"));
       setDraft(result);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not compile the draft.");
+      setError(reason instanceof Error ? reason.message : text("error"));
     } finally {
       setBusy(false);
     }
@@ -46,19 +52,17 @@ export function ContributorPanel() {
 
   return (
     <section className="contributor-panel" aria-labelledby="contributor-heading">
-      <p className="eyebrow">Contributor mode</p>
-      <h1 id="contributor-heading">Turn an experience into a reviewable draft.</h1>
-      <p className="contributor-copy">
-        Add a synthetic lived experience. It stays a draft and never becomes official guidance here.
-      </p>
+      <p className="eyebrow">{text("eyebrow")}</p>
+      <h1 id="contributor-heading">{text("heading")}</h1>
+      <p className="contributor-copy">{text("copy")}</p>
 
       <form className="contribution-form" onSubmit={compile}>
-        <label htmlFor="contribution-input">What happened?</label>
+        <label htmlFor="contribution-input">{text("label")}</label>
         <textarea
           id="contribution-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Describe a synthetic bereavement claim experience…"
+          placeholder={text("placeholder")}
           rows={7}
           maxLength={2_000}
         />
@@ -74,7 +78,7 @@ export function ContributorPanel() {
             </button>
           ))}
           <button type="submit" className="primary-action" disabled={busy || !input.trim()}>
-            {busy ? "Compiling…" : "Compile draft"}
+            {busy ? text("compiling") : text("compile")}
           </button>
         </div>
       </form>
@@ -85,50 +89,62 @@ export function ContributorPanel() {
         <section className="draft-card" aria-live="polite">
           <div className="draft-heading">
             <div>
-              <p className="eyebrow">Synthetic contribution</p>
-              <h2>{draft.title}</h2>
+              <p className="eyebrow">{text("draftEyebrow")}</p>
+              <h2>{translate(draft.title, locale)}</h2>
             </div>
-            <span className="draft-status">{draft.status}</span>
+            <span className="draft-status">{text(statusKey[draft.status])}</span>
           </div>
 
-          <DraftList title="Steps" items={draft.steps} />
-          <DraftList title="Matches" items={draft.matches} empty="No seed matches found yet." />
-          <DraftList title="Possible additions" items={draft.additions} empty="No additions suggested." />
+          <DraftList title={text("sections.steps")} items={tList(draft.steps, locale)} />
+          <DraftList
+            title={text("sections.matches")}
+            items={tList(draft.matches, locale)}
+            empty={text("sections.matchesEmpty")}
+          />
+          <DraftList
+            title={text("sections.additions")}
+            items={tList(draft.additions, locale)}
+            empty={text("sections.additionsEmpty")}
+          />
 
           <section className="draft-section">
-            <h3>Conflicts requiring review</h3>
+            <h3>{text("sections.conflicts")}</h3>
             {draft.conflicts.length ? (
               <ul>
                 {draft.conflicts.map((conflict) => (
-                  <li key={`${conflict.field}-${conflict.submitted}`}>
-                    <strong>{conflict.field}:</strong> submitted “{conflict.submitted}”; bundled “{conflict.bundled}”. {conflict.reason}
+                  <li key={conflict.submitted.en}>
+                    <strong>{translate(conflict.field, locale)}:</strong>{" "}
+                    {text("conflictComparison", {
+                      submitted: translate(conflict.submitted, locale),
+                      bundled: translate(conflict.bundled, locale),
+                    })}{" "}
+                    {translate(conflict.reason, locale)}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>No conflicts found against the bundled seed.</p>
+              <p>{text("sections.conflictsEmpty")}</p>
             )}
           </section>
 
           <p className="draft-meta">
-            Source: {draft.sourceType} · Corroboration: {draft.corroborationCount} ·
-            Matched seed: {draft.workflowId}
+            {text("meta", {
+              source: text("sourceType"),
+              count: draft.corroborationCount,
+              workflow: draft.workflowId,
+            })}
           </p>
           <p className="draft-meta">
             {draft.conflicts.length
-              ? "Held for review: a conflict with the bundled source is unresolved."
+              ? text("verdict.held")
               : draft.corroborationCount >= 2
-                ? "Corroborated by more than one contributor, so this draft may be proposed for publication."
-                : "One report so far. A second matching contribution would corroborate it."}
+                ? text("verdict.corroborated")
+                : text("verdict.single")}
           </p>
           <button type="button" className="simulated-publish" disabled>
-            {draft.status === "publishable draft"
-              ? "Simulated publish — publishable draft"
-              : "Simulated publish — review required"}
+            {draft.status === "publishable draft" ? text("publish.publishable") : text("publish.review")}
           </button>
-          <p className="draft-meta">
-            Publication is simulated. A contribution never becomes official guidance in this prototype.
-          </p>
+          <p className="draft-meta">{text("publishNote")}</p>
         </section>
       )}
     </section>

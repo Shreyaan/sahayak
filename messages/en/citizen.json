@@ -1,1 +1,102 @@
-{}
+{
+  "mode": {
+    "contribute": "Contribute",
+    "citizen": "Citizen"
+  },
+  "intro": {
+    "heading": "Which task is stuck?",
+    "lead": "Pick a journey. We will keep every next step visible."
+  },
+  "journeyStart": "Start",
+  "case": {
+    "eyebrow": "Case status",
+    "day": "Day {day}",
+    "simulatedTime": "Simulated demo time",
+    "advanceDay": "Move a day ahead",
+    "waiting": "A desk is checking your case. Press “Move a day ahead” to move time forward.",
+    "waitingNote": "This desk is simulated.",
+    "artifacts": "Papers created for you",
+    "openCaseCard": "Open Case Card",
+    "startOver": "Start over"
+  },
+  "state": {
+    "pending": "Pending",
+    "needs-you": "Needs you",
+    "verifying": "Verifying",
+    "blocked": "Blocked",
+    "done": "Done"
+  },
+  "visit": {
+    "eyebrow": "Office visit",
+    "carry": "Carry",
+    "script": "Say this at the counter",
+    "expect": "Expect",
+    "collect": "Collect",
+    "warning": "Do not pay a middleman or an unauthorised agent.",
+    "warningNote": "You do not need a middleman for this."
+  },
+  "chat": {
+    "greeting": "Hello. I am Sahayak. You will see every next step as we go.",
+    "thinking": "Thinking…",
+    "listen": "Listen",
+    "listenLabel": "Listen to this reply",
+    "inputLabel": "Type your reply",
+    "placeholder": "Type your reply…",
+    "send": "Send",
+    "recordStart": "Record your voice",
+    "recordStop": "Stop recording",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "error": {
+    "request": "No reply came through just now. Please try again.",
+    "transcribe": "I could not catch that. Please type your reply instead.",
+    "recording": "The recording stopped. You can carry on by typing.",
+    "microphone": "The microphone is not available. You can carry on by typing.",
+    "speech": "I could not read that out just now. You can still read it here."
+  },
+  "contributor": {
+    "eyebrow": "Contributor mode",
+    "heading": "Turn an experience into a reviewable draft.",
+    "copy": "Add a synthetic lived experience. It stays a draft and never becomes official guidance here.",
+    "label": "What happened?",
+    "placeholder": "Describe a synthetic bereavement claim experience…",
+    "examples": {
+      "bereavementLabel": "Bereavement example",
+      "bereavementText": "After my father died, I used Form 4 for a bank claim. The claimant name appeared as Shyam Sundar.",
+      "scholarshipLabel": "Scholarship example",
+      "scholarshipText": "NSP showed Released to PFMS but nothing reached my account. The branch said NPCI seeding was missing."
+    },
+    "compile": "Compile draft",
+    "compiling": "Compiling…",
+    "error": "Could not compile the draft.",
+    "draftEyebrow": "Synthetic contribution",
+    "sections": {
+      "steps": "Steps",
+      "matches": "Matches",
+      "matchesEmpty": "No seed matches found yet.",
+      "additions": "Possible additions",
+      "additionsEmpty": "No additions suggested.",
+      "conflicts": "Conflicts requiring review",
+      "conflictsEmpty": "No conflicts found against the bundled seed."
+    },
+    "conflictComparison": "submitted “{submitted}”; bundled “{bundled}”.",
+    "meta": "Source: {source} · Corroboration: {count} · Matched seed: {workflow}",
+    "sourceType": "lived experience",
+    "status": {
+      "draft": "draft",
+      "needsReview": "needs review",
+      "publishableDraft": "publishable draft"
+    },
+    "verdict": {
+      "held": "Held for review: a conflict with the bundled source is unresolved.",
+      "corroborated": "Corroborated by more than one contributor, so this draft may be proposed for publication.",
+      "single": "One report so far. A second matching contribution would corroborate it."
+    },
+    "publish": {
+      "publishable": "Simulated publish — publishable draft",
+      "review": "Simulated publish — review required"
+    },
+    "publishNote": "Publication is simulated. A contribution never becomes official guidance in this prototype."
+  }
+}
