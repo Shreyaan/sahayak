@@ -2,15 +2,15 @@
   "specVersion": "1.0",
   "host": {
     "displayName": "Sahayak",
-    "identifier": "sahayak",
-    "documentationUrl": "https://sahayak-production-88bb.up.railway.app/agents"
+    "identifier": "did:web:sahayak.anosher.com",
+    "documentationUrl": "https://sahayak.anosher.com/agents"
   },
   "entries": [
     {
-      "identifier": "urn:sahayak:mcp:workflows",
+      "identifier": "urn:sahayak:anosher.com:mcp:workflows",
       "displayName": "Sahayak Workflow Tools",
       "type": "application/mcp-server-card+json",
-      "url": "https://sahayak-production-88bb.up.railway.app/mcp",
+      "url": "https://sahayak.anosher.com/mcp",
       "transport": "streamable-http",
       "description": "Read the citizen-journey catalog and propose a new workflow from a conversation. Every proposal is compiled by Sahayak's deterministic engine; the AI refines wording, never structure.",
       "capabilities": ["WorkflowRead", "WorkflowProposals"],
