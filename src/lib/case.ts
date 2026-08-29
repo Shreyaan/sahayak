@@ -17,7 +17,8 @@ export function advanceCase(
   caseSnapshot: CaseSnapshot,
   message: string,
 ): CaseSnapshot {
-  const confirmed = /हाँ|haan|yes|shyam sunder/i.test(message);
+  const negated = /\b(?:no|not|nope|nah|wrong)\b|नहीं|नही|गलत/i.test(message);
+  const confirmed = !negated && (/\b(?:haan|yes|shyam\s+sunder)\b/i.test(message) || message.includes("हाँ"));
 
   if (!confirmed || caseSnapshot.nodes[0]?.state === "done") {
     return caseSnapshot;

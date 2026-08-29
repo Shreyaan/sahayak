@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { initialCase, type CaseSnapshot } from "@/lib/case";
+import { stopMediaStream } from "@/lib/media";
 import { ContributorPanel } from "./contributor-panel";
 
 type Message = { from: "sahayak" | "citizen"; text: string };
@@ -19,6 +20,35 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  const mediaStream = useRef<MediaStream | null>(null);
+  const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingRequest = useRef(0);
+
+  function clearRecordingResources(updateState = true) {
+    if (recordingTimeout.current) {
+      clearTimeout(recordingTimeout.current);
+      recordingTimeout.current = null;
+    }
+
+    stopMediaStream(mediaStream.current);
+    mediaStream.current = null;
+    recorder.current = null;
+    if (updateState) setRecording(false);
+  }
+
+  function stopActiveRecording(discard: boolean, updateState = true) {
+    recordingRequest.current += 1;
+    const activeRecorder = recorder.current;
+    if (discard && activeRecorder) activeRecorder.onstop = null;
+
+    try {
+      if (activeRecorder?.state === "recording") activeRecorder.stop();
+    } finally {
+      clearRecordingResources(updateState);
+    }
+  }
+
+  useEffect(() => () => stopActiveRecording(true, false), []);
 
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -55,19 +85,25 @@ export default function Home() {
 
   async function toggleRecording() {
     if (recorder.current?.state === "recording") {
-      recorder.current.stop();
+      stopActiveRecording(false);
       return;
     }
 
     try {
+      const requestId = recordingRequest.current + 1;
+      recordingRequest.current = requestId;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (recordingRequest.current !== requestId) {
+        stopMediaStream(stream);
+        return;
+      }
+      mediaStream.current = stream;
       const chunks: Blob[] = [];
       const mediaRecorder = new MediaRecorder(stream);
       recorder.current = mediaRecorder;
       mediaRecorder.ondataavailable = (event) => chunks.push(event.data);
       mediaRecorder.onstop = async () => {
-        setRecording(false);
-        stream.getTracks().forEach((track) => track.stop());
+        clearRecordingResources();
         const form = new FormData();
         form.append("audio", new File(chunks, "voice.webm", { type: mediaRecorder.mimeType }));
 
@@ -80,25 +116,53 @@ export default function Home() {
           setMessages((current) => [...current, { from: "sahayak", text: "आवाज़ समझ नहीं आई। जवाब लिखकर भेजें।" }]);
         }
       };
+      mediaRecorder.onerror = () => {
+        stopActiveRecording(true);
+        setMessages((current) => [...current, {
+          from: "sahayak",
+          text: "रिकॉर्डिंग रुक गई। आप लिखकर जारी रख सकते हैं।",
+        }]);
+      };
       mediaRecorder.start();
       setRecording(true);
+      recordingTimeout.current = setTimeout(() => stopActiveRecording(false), 30_000);
     } catch {
+      stopActiveRecording(true);
       setMessages((current) => [...current, { from: "sahayak", text: "माइक उपलब्ध नहीं है। आप लिखकर जारी रख सकते हैं।" }]);
     }
   }
 
   async function speak(text: string) {
-    const response = await fetch("/api/speak", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!response.ok) return;
+    let url: string | undefined;
 
-    const url = URL.createObjectURL(await response.blob());
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    await audio.play();
+    try {
+      const response = await fetch("/api/speak", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) throw new Error("Speech request failed");
+
+      url = URL.createObjectURL(await response.blob());
+      const audio = new Audio(url);
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error("Speech playback failed"));
+        audio.play().catch(reject);
+      });
+    } catch {
+      setMessages((current) => [...current, {
+        from: "sahayak",
+        text: "अभी जवाब सुनाया नहीं जा सका। आप इसे यहीं पढ़ सकते हैं।",
+      }]);
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+
+  function toggleContributorMode() {
+    if (!contributorMode) stopActiveRecording(true);
+    setContributorMode((current) => !current);
   }
 
   return (
@@ -109,7 +173,7 @@ export default function Home() {
           className="author-link"
           type="button"
           aria-pressed={contributorMode}
-          onClick={() => setContributorMode((current) => !current)}
+          onClick={toggleContributorMode}
         >
           {contributorMode ? "नागरिक · Citizen" : "योगदान दें · Contribute"}
         </button>
@@ -165,12 +229,13 @@ export default function Home() {
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           placeholder="अपना जवाब लिखें…"
+          maxLength={2_000}
         />
         <button className="send" disabled={busy} type="submit">भेजें</button>
       </form>
 
-      <footer>Independent hackathon prototype. Not affiliated with any government body.</footer>
       </>}
+      <footer>Independent hackathon prototype. Not affiliated with any government body.</footer>
     </main>
   );
 }

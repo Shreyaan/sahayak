@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isRateLimited } from "@/lib/rate-limit";
 
 const requestSchema = z.object({ text: z.string().trim().min(1).max(2_000) });
 
 export async function POST(request: Request) {
+  if (isRateLimited(request)) {
+    return NextResponse.json({ error: "Too many requests. Please try again shortly." }, { status: 429 });
+  }
+
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
@@ -16,20 +21,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Speech output is not configured." }, { status: 503 });
   }
 
-  const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "xi-api-key": apiKey,
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          text: parsed.data.text,
+          model_id: "eleven_flash_v2_5",
+        }),
+        signal: AbortSignal.timeout(15_000),
       },
-      body: JSON.stringify({
-        text: parsed.data.text,
-        model_id: "eleven_flash_v2_5",
-      }),
-    },
-  );
+    );
+  } catch {
+    return NextResponse.json({ error: "Speech generation failed. Please try again." }, { status: 502 });
+  }
 
   if (!response.ok || !response.body) {
     return NextResponse.json({ error: "Speech generation failed." }, { status: 502 });
