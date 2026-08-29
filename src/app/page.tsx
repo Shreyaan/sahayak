@@ -27,6 +27,17 @@ const stateLabel: Record<NodeState, string> = {
 
 const requestFailed = "अभी जवाब नहीं मिला। कृपया फिर कोशिश करें।";
 
+/** Carries the live case to the Case Card, which re-reads all content from the seed. */
+function caseCardHref(caseSnapshot: CaseSnapshot): string {
+  const json = JSON.stringify(caseSnapshot);
+  const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  return `/case-card?case=${base64}`;
+}
+
 export default function Home() {
   const [contributorMode, setContributorMode] = useState(false);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot | null>(null);
@@ -331,7 +342,7 @@ export default function Home() {
                 <ul>
                   {caseSnapshot.artifacts.map((id) => (
                     <li key={id}>
-                      <a href="/case-card">
+                      <a href={caseCardHref(caseSnapshot)}>
                         <strong>{artifactContent[id].title}</strong>
                         <small>{artifactContent[id].subtitle}</small>
                       </a>
@@ -340,6 +351,10 @@ export default function Home() {
                 </ul>
               </div>
             )}
+
+            <a className="case-card-link" href={caseCardHref(caseSnapshot)}>
+              Case Card खोलें · Open Case Card
+            </a>
 
             <button className="reset-demo" type="button" onClick={resetDemo}>
               दूसरा काम चुनें · Start over
