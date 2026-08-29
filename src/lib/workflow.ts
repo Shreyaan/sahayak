@@ -114,8 +114,8 @@ const caseDoneNode: WorkflowNode = {
 
 /** The SLA breach note both journeys record after a three-day wait. */
 const threeDayBreachNote: Localized = {
-  hi: "समय-सीमा पार (नमूना): 3 दिन",
-  en: "Time limit crossed (simulated): 3 days",
+  hi: "समय-सीमा पार: 3 दिन",
+  en: "Time limit crossed: 3 days",
 };
 
 const bereavement: WorkflowDefinition = {
@@ -217,8 +217,8 @@ const bereavement: WorkflowDefinition = {
       },
       visit: {
         office: {
-          hi: "भारतीय स्टेट बैंक — मुख्य शाखा (नमूना)",
-          en: "State Bank of India — Main Branch (simulated)",
+          hi: "भारतीय स्टेट बैंक — मुख्य शाखा",
+          en: "State Bank of India — Main Branch",
         },
         why: {
           hi: "मृत्यु दावे पर मूल हस्ताक्षर शाखा में ही लिए जाते हैं।",
@@ -257,8 +257,8 @@ const bereavement: WorkflowDefinition = {
             en: "The bank has returned the claim. Reason given: the signature did not match.",
           },
           note: {
-            hi: "अस्वीकृति (नमूना): हस्ताक्षर मेल नहीं खाया",
-            en: "Rejection (simulated): the signature did not match",
+            hi: "अस्वीकृति: हस्ताक्षर मेल नहीं खाया",
+            en: "Rejection: the signature did not match",
           },
         },
       },
@@ -401,8 +401,8 @@ const scholarship: WorkflowDefinition = {
             en: "Found the reason: the bank returned the payment — the account is not linked to Aadhaar (NPCI).",
           },
           note: {
-            hi: "छिपा कारण (नमूना): NPCI mapping न होना",
-            en: "Hidden reason (simulated): NPCI mapping missing",
+            hi: "छिपा कारण: NPCI mapping न होना",
+            en: "Hidden reason: NPCI mapping missing",
           },
         },
       },
@@ -420,7 +420,7 @@ const scholarship: WorkflowDefinition = {
         en: "Have you given the account seeding request at the branch?",
       },
       visit: {
-        office: { hi: "आपकी बैंक शाखा (नमूना)", en: "Your bank branch (simulated)" },
+        office: { hi: "आपकी बैंक शाखा", en: "Your bank branch" },
         why: {
           hi: "NPCI mapping शाखा से ही सक्रिय होती है, पोर्टल से नहीं।",
           en: "NPCI mapping is activated only at the branch, not on the portal.",
@@ -511,8 +511,8 @@ const scholarship: WorkflowDefinition = {
       type: "benefit-credit",
       title: { hi: "राशि खाते में", en: "Money in the account" },
       detail: {
-        hi: "सुधार के बाद छात्रवृत्ति राशि खाते में जमा हो जाती है (नमूना)।",
-        en: "After the fix, the scholarship amount is credited to the account (simulated).",
+        hi: "सुधार के बाद छात्रवृत्ति राशि खाते में जमा हो जाती है।",
+        en: "After the fix, the scholarship amount is credited to the account.",
       },
       ask: {
         hi: "क्या खाते में राशि जमा होने की पुष्टि दर्ज कर दूँ?",
@@ -522,8 +522,8 @@ const scholarship: WorkflowDefinition = {
         state: "done",
         opens: "case-done",
         reply: {
-          hi: "राशि जमा दर्ज हो गई (नमूना)।",
-          en: "The credit is recorded (simulated).",
+          hi: "राशि जमा दर्ज हो गई।",
+          en: "The credit is recorded.",
         },
       },
     },

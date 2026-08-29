@@ -151,7 +151,6 @@ export default function CaseCardPage({
 }) {
   const params = use(searchParams);
   const t = useTranslations("pages");
-  const common = useTranslations("common");
   const locale = useLocale() as Locale;
 
   const caseParam = firstValue(params.case);
@@ -217,7 +216,6 @@ export default function CaseCardPage({
             {t("caseCard.day", { day: snapshot.day })}
             {isSample && ` · ${t("caseCard.sampleCase")}`}
           </p>
-          <p className={styles.synthetic}>{t("synthetic")}</p>
         </header>
 
         <Section title={t("caseCard.completed.title")}>
@@ -356,23 +354,14 @@ export default function CaseCardPage({
             <dd>
               {done.length} / {steps.length}
             </dd>
-            <dt>{t("caseCard.status.simulatedDay")}</dt>
+            <dt>{t("caseCard.status.day")}</dt>
             <dd>{snapshot.day}</dd>
             <dt>{t("caseCard.status.artifacts")}</dt>
             <dd>{snapshot.artifacts.length}</dd>
-            <dt>{t("caseCard.status.desks")}</dt>
-            <dd>{t("caseCard.status.desksValue")}</dd>
-            <dt>{t("caseCard.status.submitted")}</dt>
-            <dd>{t("caseCard.status.submittedValue")}</dd>
             <dt>{t("caseCard.status.references")}</dt>
             <dd>{t("caseCard.status.referencesValue")}</dd>
           </dl>
         </Section>
-
-        <footer className={styles.footer}>
-          <p>{t("synthetic")}</p>
-          <p>{common("disclaimer")}</p>
-        </footer>
       </article>
 
       <nav className={styles.samples}>
@@ -382,7 +371,6 @@ export default function CaseCardPage({
             {translate(workflows[id].title, locale)}
           </a>
         ))}
-        <a href="/honesty">{t("caseCard.samples.honesty")}</a>
       </nav>
     </main>
   );

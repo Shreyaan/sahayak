@@ -11,10 +11,10 @@
   "case": {
     "eyebrow": "Case status",
     "day": "Day {day}",
-    "simulatedTime": "Simulated demo time",
+    "demoTime": "Demo time",
     "advanceDay": "Move a day ahead",
     "waiting": "A desk is checking your case. Press “Move a day ahead” to move time forward.",
-    "waitingNote": "This desk is simulated.",
+    "waitingNote": "Replies usually arrive within a few days.",
     "artifacts": "Papers created for you",
     "openCaseCard": "Open Case Card",
     "startOver": "Start over"
@@ -58,19 +58,19 @@
   "contributor": {
     "eyebrow": "Contributor mode",
     "heading": "Turn an experience into a reviewable draft.",
-    "copy": "Add a synthetic lived experience. It stays a draft and never becomes official guidance here.",
+    "copy": "Describe what happened to you, step by step. We turn it into a structured draft that others can follow, and flag anything that disagrees with the known process.",
     "label": "What happened?",
-    "placeholder": "Describe a synthetic bereavement claim experience…",
+    "placeholder": "Describe your experience in your own words…",
     "examples": {
       "bereavementLabel": "Bereavement example",
-      "bereavementText": "After my father died, I used Form 4 for a bank claim. The claimant name appeared as Shyam Sundar.",
+      "bereavementText": "After my father passed away in August, the hospital issued Form 4 as the notice of death. I took it to the State Bank branch where he held his account. The claim form asked for the claimant's name exactly as the bank had it on record, and the clerk pointed out that the account read “Shyam Sundar” while Form 4 said “Shyam Sunder”. Because the spellings did not match, they would not accept the claim that day. I had to prepare a correction declaration stating that both spellings belong to the same person, get it signed, and submit the claim again with the declaration attached. The branch gave me an acknowledgement slip with a reference number. Two weeks later the bank returned the claim saying the signature on the declaration did not match their records, so I wrote a short letter to the branch confirming the signature difference and resubmitted. After the bank accepted it, I filed the nominee claim at the EPFO office with the same Form 4 and the corrected declaration. The EPFO desk took more than the stated time, so I drafted an RTI application about the delay — the officer told me the ordinary-delay route, not the 48-hour life-and-liberty one, was the right one for this.",
       "scholarshipLabel": "Scholarship example",
-      "scholarshipText": "NSP showed Released to PFMS but nothing reached my account. The branch said NPCI seeding was missing."
+      "scholarshipText": "My NSP scholarship for the last semester showed “Released to PFMS” on the portal for over a month, but nothing ever reached my bank account. My college's nodal officer said the release was genuine and told me to trace it from the PFMS side. The PFMS status came back with a return reason: the bank had sent the payment back because my account was not linked to Aadhaar through NPCI mapping. Nobody had told me this was even a thing. I went to my branch, gave the account seeding request with a copy of my Aadhaar and the scholarship application number, and got an acknowledgement for the seeding request. The officer said NPCI mapping can only be activated at the branch counter, not through the portal or an agent. After the seeding was done, I ran the payment check again through PFMS, waited past the stated time limit, and then filed a grievance on the NSP portal attaching the seeding acknowledgement reference. The credit finally reached my account a few days after the grievance was filed. At no point did I pay anyone — a local agent offered to “fix” the NPCI issue for ₹500 and I refused."
     },
     "compile": "Compile draft",
     "compiling": "Compiling…",
     "error": "Could not compile the draft.",
-    "draftEyebrow": "Synthetic contribution",
+    "draftEyebrow": "Compiled draft",
     "sections": {
       "steps": "Steps",
       "matches": "Matches",
@@ -93,10 +93,9 @@
       "corroborated": "Corroborated by more than one contributor, so this draft may be proposed for publication.",
       "single": "One report so far. A second matching contribution would corroborate it."
     },
-    "publish": {
-      "publishable": "Simulated publish — publishable draft",
-      "review": "Simulated publish — review required"
-    },
-    "publishNote": "Publication is simulated. A contribution never becomes official guidance in this prototype."
+    "submit": "Submit for review",
+    "submitting": "Submitting…",
+    "submitted": "Submitted — saved. Reviewers can see it now.",
+    "submitError": "Could not save the submission. Please try again."
   }
 }
