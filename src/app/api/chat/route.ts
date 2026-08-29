@@ -47,12 +47,14 @@ const caseSnapshotSchema = z.object({
 
 const requestSchema = z.object({
   action: z.enum(["reply", "advance-day"]).default("reply"),
+  /** A labeled button answers with its meaning directly; free text is read. */
+  intent: z.enum(["affirmative", "negative"]).optional(),
   message: z.string().trim().max(2_000).default(""),
   locale: z.enum(locales).default(defaultLocale),
   caseId: z.string().trim().max(64).optional(),
   caseSnapshot: caseSnapshotSchema,
 }).strict().refine(
-  ({ action, message }) => action === "advance-day" || message.length > 0,
+  ({ action, message, intent }) => action === "advance-day" || message.length > 0 || intent !== undefined,
   { message: "A reply needs a message." },
 );
 
@@ -116,7 +118,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Message and case are required." }, { status: 400 });
   }
 
-  const { action, message, locale, caseId, caseSnapshot } = parsed.data;
+  const { action, intent: statedIntent, message, locale, caseId, caseSnapshot } = parsed.data;
 
   // The journey's definition is the authority for content; the snapshot only
   // carries ids and states. Both bundled and user-added journeys resolve here.
@@ -136,20 +138,25 @@ export async function POST(request: Request) {
     return NextResponse.json(localize(advanceDay(caseSnapshot)));
   }
 
-  let intent = readIntent(message);
+  // A labeled button states its intent outright; free text goes through the
+  // deterministic reader first, then the clerk model only if it cannot decide.
+  let intent: Intent | undefined = statedIntent;
   const apiKey = process.env.OPENROUTER_API_KEY;
   const node = currentNode(caseSnapshot);
 
-  // The model is consulted only when the deterministic reader cannot decide.
-  if (intent === "unknown" && apiKey && node) {
-    try {
-      intent = await readIntentWithClerk(apiKey, message, t(node.ask, locale), locale);
-    } catch {
-      // An unreadable reply simply re-asks the question below.
+  if (!intent) {
+    intent = readIntent(message);
+
+    if (intent === "unknown" && apiKey && node) {
+      try {
+        intent = await readIntentWithClerk(apiKey, message, t(node.ask, locale), locale);
+      } catch {
+        // An unreadable reply simply re-asks the question below.
+      }
     }
   }
 
-  const result = localize(applyIntent(caseSnapshot, intent));
+  const result = localize(applyIntent(caseSnapshot, intent ?? "unknown"));
 
   // Persist the case so the citizen can come back to exactly this state.
   if (caseId) {

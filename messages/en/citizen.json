@@ -22,7 +22,8 @@
     "waitingNote": "Replies usually arrive within a few days.",
     "artifacts": "Papers created for you",
     "openCaseCard": "Open Case Card",
-    "startOver": "Start over"
+    "startOver": "Start over",
+    "allDone": "Every step in this case is done. Your Case Card is ready."
   },
   "state": {
     "pending": "Pending",
@@ -30,6 +31,18 @@
     "verifying": "Verifying",
     "blocked": "Blocked",
     "done": "Done"
+  },
+  "action": {
+    "eyebrow": "What is needed from you now",
+    "yesDefault": "Yes, go ahead",
+    "noDefault": "No, not yet",
+    "listen": "Listen",
+    "listenLabel": "Listen to this step"
+  },
+  "answer": {
+    "label": "Reply in your own words",
+    "placeholder": "Or reply in your own words — say yes, no, or ask something…",
+    "send": "Send reply"
   },
   "visit": {
     "eyebrow": "Office visit",
@@ -41,17 +54,8 @@
     "warningNote": "You do not need a middleman for this."
   },
   "chat": {
-    "greeting": "Hello. I am Sahayak. You will see every next step as we go.",
-    "thinking": "Thinking…",
-    "listen": "Listen",
-    "listenLabel": "Listen to this reply",
-    "inputLabel": "Type your reply",
-    "placeholder": "Type your reply…",
-    "send": "Send",
     "recordStart": "Record your voice",
-    "recordStop": "Stop recording",
-    "yes": "Yes",
-    "no": "No"
+    "recordStop": "Stop recording"
   },
   "error": {
     "request": "No reply came through just now. Please try again.",

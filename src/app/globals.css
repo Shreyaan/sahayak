@@ -378,3 +378,93 @@ header { flex-wrap: wrap; row-gap: 8px; }
   color: #67736d;
   font-size: .76rem;
 }
+
+/* Timeline-first citizen view: the action panel replaces the chat transcript. */
+.action-panel {
+  padding: 16px;
+  border: 2px solid var(--green);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 10px 30px rgba(28, 35, 31, .08);
+}
+
+.action-panel h2 { margin: 4px 0 6px; font-size: 1.15rem; }
+
+.action-detail {
+  margin: 0 0 10px;
+  color: #5a6560;
+  font-size: .92rem;
+}
+
+.action-question {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-buttons .primary-action { background: var(--green); color: white; }
+.action-buttons .secondary-action { background: #eef2ef; color: var(--green); }
+
+.listen-link {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  color: var(--green);
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.feedback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f2f6f3;
+  color: #33413a;
+  font-size: .92rem;
+}
+
+.feedback .listen-link { min-height: 36px; padding: 4px 8px; }
+
+.action-done { margin: 0; font-weight: 700; }
+
+/* The answer box: free text plus mic, sticky like the old chat form. */
+.answer-form {
+  position: sticky;
+  bottom: 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 12px 35px rgba(28, 35, 31, .14);
+}
+
+.answer-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  resize: none;
+}
+
+.answer-form button { border: 0; border-radius: 12px; font-weight: 800; }
+.answer-form .send { min-width: 72px; min-height: 44px; padding: 10px 14px; background: var(--marigold); color: #2f250f; }
+.answer-form .mic { width: 42px; height: 42px; flex: 0 0 auto; background: #eee5d8; color: var(--green); }
+.answer-form .mic.recording { background: #8b2e24; color: white; }
+.answer-form button:disabled { opacity: .55; cursor: wait; }

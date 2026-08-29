@@ -18,8 +18,6 @@ import {
 import { ContributorPanel } from "./contributor-panel";
 import { LanguageSwitcher } from "./language-switcher";
 
-type Message = { from: "sahayak" | "citizen"; text: string };
-
 type StoredCase = {
   id: string;
   workflowId: string;
@@ -48,8 +46,8 @@ export default function Home() {
   const [savedCases, setSavedCases] = useState<StoredCase[]>([]);
   const [caseId, setCaseId] = useState<string | null>(null);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -83,10 +81,6 @@ export default function Home() {
 
   useEffect(() => () => stopActiveRecording(true, false), []);
 
-  function sayBack(reply: string) {
-    setMessages((current) => [...current, { from: "sahayak", text: reply }]);
-  }
-
   /** Re-reads every journey (bundled and user-added) into the client registry. */
   async function refreshWorkflows() {
     try {
@@ -118,12 +112,12 @@ export default function Home() {
   /**
    * The server is the only authority for case transitions: whatever snapshot it
    * returns replaces local state. Nothing is decided on the client. The reply
-   * arrives already written in the active language.
+   * arrives already written in the active language, and is shown as the latest
+   * update under the current action.
    */
-  async function ask(body: Record<string, unknown>, echo?: string) {
+  async function ask(body: Record<string, unknown>) {
     if (busy || !caseSnapshot) return;
 
-    if (echo) setMessages((current) => [...current, { from: "citizen", text: echo }]);
     setBusy(true);
 
     try {
@@ -136,16 +130,16 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error || "Request failed");
 
       setCaseSnapshot(result.caseSnapshot);
-      sayBack(result.reply);
+      setFeedback(result.reply);
     } catch {
-      sayBack(text("error.request"));
+      setFeedback(text("error.request"));
     } finally {
       setBusy(false);
     }
   }
 
-  function reply(value: string) {
-    return ask({ action: "reply", message: value }, value);
+  function answerWithIntent(intent: "affirmative" | "negative") {
+    return ask({ action: "reply", intent });
   }
 
   function advanceDay() {
@@ -154,25 +148,19 @@ export default function Home() {
 
   function send(event: FormEvent) {
     event.preventDefault();
-    const value = message.trim();
+    const value = answer.trim();
     if (!value) return;
 
-    setMessage("");
-    void reply(value);
+    setAnswer("");
+    void ask({ action: "reply", message: value });
   }
 
-  /** Opens a case with its greeting, whether it came from the server or locally. */
+  /** Opens a case, whether it came from the server or locally. */
   function openCase(caseSnapshot: CaseSnapshot, id: string | null) {
-    const definition = getWorkflowDefinition(caseSnapshot.workflowId);
-    const first = definition && findNode(caseSnapshot.workflowId, definition.firstNodeId);
-
     setCaseId(id);
     setCaseSnapshot(caseSnapshot);
-    setMessage("");
-    setMessages([
-      { from: "sahayak", text: text("chat.greeting") },
-      ...(first ? [{ from: "sahayak" as const, text: translate(first.ask, locale) }] : []),
-    ]);
+    setAnswer("");
+    setFeedback("");
   }
 
   async function startJourney(workflowId: string) {
@@ -196,8 +184,8 @@ export default function Home() {
     stopActiveRecording(true);
     setCaseSnapshot(null);
     setCaseId(null);
-    setMessages([]);
-    setMessage("");
+    setFeedback("");
+    setAnswer("");
     void refreshCases();
   }
 
@@ -231,21 +219,21 @@ export default function Home() {
           const response = await fetch("/api/transcribe", { method: "POST", body: form });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error);
-          setMessage(result.transcript);
+          setAnswer(result.transcript);
         } catch {
-          sayBack(text("error.transcribe"));
+          setFeedback(text("error.transcribe"));
         }
       };
       mediaRecorder.onerror = () => {
         stopActiveRecording(true);
-        sayBack(text("error.recording"));
+        setFeedback(text("error.recording"));
       };
       mediaRecorder.start();
       setRecording(true);
       recordingTimeout.current = setTimeout(() => stopActiveRecording(false), 30_000);
     } catch {
       stopActiveRecording(true);
-      sayBack(text("error.microphone"));
+      setFeedback(text("error.microphone"));
     }
   }
 
@@ -268,7 +256,7 @@ export default function Home() {
         audio.play().catch(reject);
       });
     } catch {
-      sayBack(text("error.speech"));
+      setFeedback(text("error.speech"));
     } finally {
       if (url) URL.revokeObjectURL(url);
     }
@@ -283,14 +271,15 @@ export default function Home() {
   const openNode = caseSnapshot?.nodes.find((node) => node.state === "needs-you");
   const current = caseSnapshot && openNode ? findNode(caseSnapshot.workflowId, openNode.id) : undefined;
   const waiting = caseSnapshot?.nodes.some((node) => node.state === "verifying") ?? false;
-  const chips = current
-    ? [
-        current.confirmLabel ? translate(current.confirmLabel, locale) : text("chat.yes"),
-        ...(current.onDecline
-          ? [current.declineLabel ? translate(current.declineLabel, locale) : text("chat.no")]
-          : []),
-      ]
-    : [];
+  const confirmText = current
+    ? (current.confirmLabel ? translate(current.confirmLabel, locale) : text("action.yesDefault"))
+    : "";
+  const declineText = current
+    ? (current.declineLabel ? translate(current.declineLabel, locale) : text("action.noDefault"))
+    : "";
+  const spokenAction = current
+    ? `${translate(current.title, locale)}. ${translate(current.detail, locale)}. ${translate(current.ask, locale)}`
+    : "";
 
   return (
     <main>
@@ -385,14 +374,6 @@ export default function Home() {
               </button>
             </div>
 
-            {waiting && (
-              <p className="waiting" role="status">
-                <span className="waiting-dot" />
-                {text("case.waiting")}
-                <em>{text("case.waitingNote")}</em>
-              </p>
-            )}
-
             <ol className="timeline">
               {caseSnapshot.nodes.map((node) => {
                 const definition = findNode(caseSnapshot.workflowId, node.id);
@@ -462,36 +443,69 @@ export default function Home() {
             </button>
           </section>
 
-          <section className="chat" aria-live="polite">
-            {messages.map((item, index) => (
-              <div key={index} className={`message ${item.from}`}>
-                <p className={`bubble ${item.from}`}>{item.text}</p>
-                {item.from === "sahayak" && (
+          <section className="action-panel" aria-live="polite">
+            {current ? (
+              <>
+                <p className="eyebrow">{text("action.eyebrow")}</p>
+                <h2>{translate(current.title, locale)}</h2>
+                <p className="action-detail">{translate(current.detail, locale)}</p>
+                <p className="action-question">{translate(current.ask, locale)}</p>
+                <div className="action-buttons">
                   <button
-                    className="speak"
+                    className="primary-action"
                     type="button"
-                    onClick={() => speak(item.text)}
-                    aria-label={text("chat.listenLabel")}
+                    disabled={busy}
+                    onClick={() => void answerWithIntent("affirmative")}
                   >
-                    🔊 {text("chat.listen")}
+                    {confirmText}
                   </button>
-                )}
-              </div>
-            ))}
-            {busy && <p className="bubble sahayak">{text("chat.thinking")}</p>}
+                  {current.onDecline && (
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void answerWithIntent("negative")}
+                    >
+                      {declineText}
+                    </button>
+                  )}
+                  <button
+                    className="listen-link"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void speak(spokenAction)}
+                    aria-label={text("action.listenLabel")}
+                  >
+                    🔊 {text("action.listen")}
+                  </button>
+                </div>
+              </>
+            ) : waiting ? (
+              <p className="waiting" role="status">
+                <span className="waiting-dot" />
+                {text("case.waiting")}
+                <em>{text("case.waitingNote")}</em>
+              </p>
+            ) : (
+              <p className="action-done">{text("case.allDone")}</p>
+            )}
+
+            {feedback && (
+              <p className="feedback" role="status">
+                {feedback}
+                <button
+                  className="listen-link"
+                  type="button"
+                  onClick={() => void speak(feedback)}
+                  aria-label={text("action.listenLabel")}
+                >
+                  🔊
+                </button>
+              </p>
+            )}
           </section>
 
-          {chips.length > 0 && (
-            <div className="chips">
-              {chips.map((chip) => (
-                <button key={chip} className="chip" type="button" disabled={busy} onClick={() => void reply(chip)}>
-                  {chip}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <form className="chat-form" onSubmit={send}>
+          <form className="answer-form" onSubmit={send}>
             <button
               className={`mic ${recording ? "recording" : ""}`}
               type="button"
@@ -500,14 +514,17 @@ export default function Home() {
             >
               {recording ? "■" : "●"}
             </button>
-            <input
-              aria-label={text("chat.inputLabel")}
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder={text("chat.placeholder")}
+            <textarea
+              aria-label={text("answer.label")}
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+              placeholder={text("answer.placeholder")}
+              rows={2}
               maxLength={2_000}
             />
-            <button className="send" disabled={busy} type="submit">{text("chat.send")}</button>
+            <button className="send" disabled={busy || !answer.trim()} type="submit">
+              {text("answer.send")}
+            </button>
           </form>
         </>
       )}
