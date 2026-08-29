@@ -201,3 +201,16 @@ footer { padding-top: 24px; color: #505a54; font-size: .7rem; text-align: center
 @media (min-width: 760px) {
   main { padding-top: 30px; }
 }
+
+.case-card-link {
+  display: block;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--marigold);
+  color: #2f250f;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}

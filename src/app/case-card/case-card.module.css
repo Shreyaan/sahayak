@@ -1,0 +1,368 @@
+.page {
+  width: min(100%, 640px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 16px 14px 48px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.back,
+.print,
+.samples a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.back {
+  border: 1px solid var(--line);
+  background: #eee5d8;
+  color: var(--green);
+}
+
+.print {
+  border: 0;
+  background: var(--marigold);
+  color: #2f250f;
+}
+
+.back:focus-visible,
+.print:focus-visible,
+.samples a:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+
+.warning {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #d9a79f;
+  border-radius: 14px;
+  background: #fbeceb;
+  color: #7c2b21;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.warning span {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+  font-size: 0.82rem;
+}
+
+.card {
+  padding: 20px 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fffdf9;
+  box-shadow: 0 14px 40px rgba(52, 43, 27, 0.07);
+}
+
+.head h1 {
+  margin: 6px 0 2px;
+  font-size: 1.5rem;
+  line-height: 1.15;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--green);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin: 0;
+  color: #536059;
+  font-size: 0.9rem;
+}
+
+.meta {
+  margin: 8px 0 0;
+  color: #536059;
+  font-size: 0.8rem;
+}
+
+.synthetic {
+  display: inline-block;
+  margin: 10px 0 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff2ce;
+  color: #7a530a;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.section {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sectionTitle {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.sectionTitle span {
+  display: block;
+  color: #536059;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  padding: 8px 0 8px 14px;
+  border-left: 3px solid var(--marigold);
+  margin-bottom: 8px;
+}
+
+.step strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.step span {
+  display: block;
+  margin-top: 3px;
+  color: #536059;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.note {
+  display: block;
+  margin-top: 5px;
+  color: #7c2b21;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.empty {
+  margin: 8px 0 0;
+  color: #536059;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.visit,
+.artifact {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.visit h3,
+.artifact h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.why {
+  margin: 4px 0 0;
+  color: #536059;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.pairs {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.pairs dt {
+  color: var(--green);
+  font-weight: 800;
+  font-size: 0.72rem;
+}
+
+.pairs dd {
+  margin: 2px 0 8px;
+  color: var(--ink);
+}
+
+.body {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.draftLabel {
+  margin: 10px 0 0;
+  color: #7a530a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.footer {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: #505a54;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.footer p {
+  margin: 4px 0;
+}
+
+.samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.samples .eyebrow {
+  flex: 1 0 100%;
+}
+
+.samples a {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--green);
+}
+
+@media print {
+  .toolbar,
+  .samples,
+  .warning {
+    display: none !important;
+  }
+
+  .page {
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+    background: white;
+    color: black;
+  }
+
+  .card {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: white;
+    box-shadow: none;
+  }
+
+  .head h1 {
+    font-size: 13pt;
+  }
+
+  .eyebrow,
+  .subtitle,
+  .meta,
+  .why,
+  .empty,
+  .draftLabel,
+  .sectionTitle span,
+  .step span {
+    color: black;
+  }
+
+  .synthetic,
+  .note,
+  .pairs dt,
+  .samples a {
+    background: none;
+    color: black;
+  }
+
+  .synthetic {
+    padding: 0;
+    font-size: 7pt;
+  }
+
+  .section {
+    margin-top: 8pt;
+    padding-top: 6pt;
+    border-top: 0.5pt solid black;
+    break-inside: avoid;
+  }
+
+  .sectionTitle {
+    font-size: 9pt;
+  }
+
+  .step,
+  .visit,
+  .artifact {
+    margin-bottom: 3pt;
+    padding: 2pt 0 2pt 6pt;
+    border: 0;
+    border-left: 1pt solid black;
+    border-radius: 0;
+    background: none;
+    break-inside: avoid;
+  }
+
+  .visit,
+  .artifact {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .step strong,
+  .visit h3,
+  .artifact h3 {
+    font-size: 8pt;
+  }
+
+  .step span,
+  .note,
+  .why,
+  .empty,
+  .pairs,
+  .body,
+  .draftLabel {
+    font-size: 7pt;
+    line-height: 1.35;
+  }
+
+  .pairs dd {
+    margin-bottom: 2pt;
+  }
+
+  .footer {
+    margin-top: 8pt;
+    padding-top: 4pt;
+    border-top: 0.5pt solid black;
+    color: black;
+    font-size: 7pt;
+  }
+}
+
+@page {
+  margin: 10mm;
+}

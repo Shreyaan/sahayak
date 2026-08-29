@@ -1,0 +1,168 @@
+.page {
+  width: min(100%, 640px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 28px 14px 56px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--green);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 8px 0;
+  font-size: clamp(1.8rem, 8vw, 2.6rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+}
+
+.lede {
+  max-width: 34rem;
+  margin: 0;
+  color: #536059;
+  line-height: 1.55;
+}
+
+.panel {
+  margin-top: 20px;
+  padding: 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 14px 40px rgba(52, 43, 27, 0.06);
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.panel h2 span {
+  display: block;
+  margin-top: 4px;
+  color: #536059;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.realPanel {
+  border-left: 5px solid var(--green);
+}
+
+.simulatedPanel {
+  border-left: 5px solid var(--marigold);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.list li:first-child {
+  border-top: 0;
+}
+
+.list strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.list span {
+  display: block;
+  margin-top: 3px;
+  color: #536059;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.warning {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff2ce;
+  color: #7a530a;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.journeys {
+  margin: 0 0 12px;
+  color: #536059;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: #eee5d8;
+  color: var(--green);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.note {
+  margin: 14px 0 0;
+  color: #536059;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.note span {
+  display: block;
+  margin-top: 4px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #eee5d8;
+  color: var(--green);
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.links a:focus-visible {
+  outline: 3px solid var(--marigold);
+  outline-offset: 3px;
+}
+
+.footer {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: #505a54;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.footer p {
+  margin: 4px 0;
+}
