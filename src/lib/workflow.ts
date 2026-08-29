@@ -55,6 +55,9 @@ export type WorkflowNode = {
   /** The clerk's question while this node is the current action. */
   ask: string;
   visit?: VisitCard;
+  /** Suggested-response chip wording, so a tap answers the actual question. */
+  confirmLabel?: string;
+  declineLabel?: string;
   onConfirm: Outcome;
   onDecline?: Outcome;
   /** Desk verification: what the simulated desk returns after `slaDays`. */
@@ -110,6 +113,8 @@ const bereavement: WorkflowDefinition = {
       title: "नाम की पुष्टि",
       detail: "Form 4 में नाम Shyam Sunder है। बैंक रिकॉर्ड में Shyam Sundar दर्ज है।",
       ask: "Form 4 में नाम Shyam Sunder लिखा है। क्या यह सही है?",
+      confirmLabel: "हाँ, यही सही है",
+      declineLabel: "नहीं, बैंक में अलग है",
       onConfirm: {
         state: "done",
         opens: "bank-claim",
