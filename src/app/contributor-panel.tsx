@@ -25,6 +25,38 @@ type StepDraft = { title: string; detail: string; kind: WorkflowStepSpec["kind"]
 
 const stepKinds: WorkflowStepSpec["kind"][] = ["confirm", "visit", "website", "desk"];
 
+function AIClerkCallout({ text }: { text: ReturnType<typeof useTranslations> }) {
+  const [copied, setCopied] = useState(false);
+  const endpoint = typeof window === "undefined" ? "/mcp" : `${window.location.origin}/mcp`;
+
+  async function copyEndpoint() {
+    try {
+      await navigator.clipboard.writeText(endpoint);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      // Selection still lets the user copy manually.
+    }
+  }
+
+  return (
+    <aside className="ai-clerk-callout">
+      <h2>{text("ai.title")}</h2>
+      <p>{text("ai.copy")}</p>
+      <div className="ai-endpoint">
+        <small>{text("ai.endpointLabel")}</small>
+        <div className="ai-endpoint-row">
+          <code>{endpoint}</code>
+          <button type="button" onClick={() => void copyEndpoint()}>
+            {copied ? text("ai.copied") : text("ai.copyButton")}
+          </button>
+        </div>
+      </div>
+      <a className="ai-learn" href="/agents">{text("ai.learn")}</a>
+    </aside>
+  );
+}
+
 export function ContributorPanel({ onWorkflowAdded }: { onWorkflowAdded?: () => void }) {
   const text = useTranslations("citizen.contributor");
   const locale = useLocale() as Locale;
@@ -58,6 +90,8 @@ export function ContributorPanel({ onWorkflowAdded }: { onWorkflowAdded?: () => 
       <h1 className="visually-hidden">
         {tab === "experience" ? text("tabs.experience") : text("tabs.workflow")}
       </h1>
+
+      <AIClerkCallout text={text} />
 
       {tab === "experience"
         ? <ExperienceTab text={text} locale={locale} />

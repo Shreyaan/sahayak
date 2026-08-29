@@ -107,6 +107,14 @@
     "recent": {
       "heading": "Recent submissions"
     },
+    "ai": {
+      "title": "Easier with an AI clerk",
+      "copy": "Skip the form. Connect ChatGPT, Claude, or any MCP client to Sahayak and just tell your story — it asks the right questions, and the journey lands here, compiled by the same engine.",
+      "endpointLabel": "MCP endpoint for the connector settings:",
+      "copyButton": "Copy",
+      "copied": "Copied ✓",
+      "learn": "How it works →"
+    },
     "copy": "Describe what happened to you, step by step. We turn it into a structured draft that others can follow, and flag anything that disagrees with the known process.",
     "label": "What happened?",
     "placeholder": "Describe your experience in your own words…",
