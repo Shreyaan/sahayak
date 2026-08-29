@@ -4,6 +4,7 @@
     "back": "← Home",
     "print": "Print",
     "unreadable": "This Case Card link is not readable. A sample case is shown below.",
+    "loading": "Loading…",
     "day": "Day {day}",
     "sampleCase": "Sample case",
     "completed": {

@@ -8,6 +8,11 @@
     "lead": "Pick a journey. We will keep every next step visible."
   },
   "journeyStart": "Start",
+  "yourCases": {
+    "heading": "Continue a case",
+    "resume": "Resume",
+    "day": "Day {day}"
+  },
   "case": {
     "eyebrow": "Case status",
     "day": "Day {day}",
@@ -58,6 +63,35 @@
   "contributor": {
     "eyebrow": "Contributor mode",
     "heading": "Turn an experience into a reviewable draft.",
+    "tabs": {
+      "experience": "Share an experience",
+      "workflow": "Add a workflow"
+    },
+    "builder": {
+      "copy": "Describe a process the way you lived it. Every step becomes part of Sahayak: the same engine, the same case card, the same speech — running your journey.",
+      "titleLabel": "What is this journey about?",
+      "titlePlaceholder": "e.g. Getting a caste certificate",
+      "subtitleLabel": "One line about it (optional)",
+      "subtitlePlaceholder": "e.g. From Form 1 to the certificate in hand",
+      "stepN": "Step {n}",
+      "stepTitle": "What happens at this step",
+      "stepDetail": "What the citizen should know (optional)",
+      "kind": "Step type",
+      "kinds": {
+        "confirm": "Ask and confirm",
+        "visit": "Office visit",
+        "desk": "Desk check with a wait"
+      },
+      "addStep": "Add a step",
+      "remove": "Remove",
+      "create": "Add this workflow",
+      "creating": "Adding…",
+      "created": "“{title}” is now on the home screen — anyone can run it.",
+      "error": "Could not add the workflow."
+    },
+    "recent": {
+      "heading": "Recent submissions"
+    },
     "copy": "Describe what happened to you, step by step. We turn it into a structured draft that others can follow, and flag anything that disagrees with the known process.",
     "label": "What happened?",
     "placeholder": "Describe your experience in your own words…",

@@ -4,6 +4,7 @@
     "back": "← होम",
     "print": "प्रिंट करें",
     "unreadable": "यह Case Card लिंक पढ़ा नहीं जा सका। नीचे एक नमूना केस दिखाया गया है।",
+    "loading": "खुल रहा है…",
     "day": "दिन {day}",
     "sampleCase": "नमूना केस",
     "completed": {

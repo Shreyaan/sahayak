@@ -1,23 +1,23 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import { artifactContent } from "@/lib/artifacts";
 import { t as translate, tList, type Locale } from "@/lib/locale";
 import {
   advanceDay,
   applyCitizenReply,
   currentNode,
+  getWorkflowDefinition,
   isClearedBlocker,
-  isWorkflowId,
   nodeNote,
+  registerWorkflowDefinition,
   startCase,
-  workflowIds,
   workflows,
   type ArtifactId,
   type CaseSnapshot,
   type NodeState,
-  type WorkflowId,
+  type WorkflowDefinition,
   type WorkflowNode,
 } from "@/lib/workflow";
 import { LanguageSwitcher } from "../language-switcher";
@@ -40,8 +40,9 @@ function decodeBase64Url(raw: string): unknown {
 /**
  * Reads `?case=` into a case snapshot. Only the workflow id, node ids, node
  * states, artifact ids and the day count are taken from the link; every title,
- * detail and note is read back from the bundled seed, so a shared link can
- * never put its own text on the Case Card. Returns null when anything fails.
+ * detail and note is read back from the journey's definition, so a shared link
+ * can never put its own text on the Case Card. Returns null when anything
+ * fails.
  */
 function readCaseParam(raw: string): CaseSnapshot | null {
   let parsed: unknown;
@@ -55,10 +56,10 @@ function readCaseParam(raw: string): CaseSnapshot | null {
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const candidate = parsed as Record<string, unknown>;
-  if (!isWorkflowId(candidate.workflowId)) return null;
+  if (typeof candidate.workflowId !== "string") return null;
 
-  const seed = workflows[candidate.workflowId];
-  if (!Array.isArray(candidate.nodes) || candidate.nodes.length !== seed.nodes.length) return null;
+  const seed = getWorkflowDefinition(candidate.workflowId);
+  if (!seed || !Array.isArray(candidate.nodes) || candidate.nodes.length !== seed.nodes.length) return null;
 
   const states = new Map<string, NodeState>();
 
@@ -97,7 +98,7 @@ function readCaseParam(raw: string): CaseSnapshot | null {
  * are engine input, not UI copy, so they stay in one language whatever the
  * reader's locale is.
  */
-function sampleCase(workflowId: WorkflowId): CaseSnapshot {
+function sampleCase(workflowId: string): CaseSnapshot {
   let snapshot = startCase(workflowId);
 
   for (let step = 0; step < 40; step += 1) {
@@ -153,18 +154,51 @@ export default function CaseCardPage({
   const t = useTranslations("pages");
   const locale = useLocale() as Locale;
 
+  // Every journey — bundled or user-added — is registered client-side from the
+  // server list before anything renders, so a shared link can name any of them.
+  const [definitions, setDefinitions] = useState<WorkflowDefinition[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/workflows")
+      .then((response) => response.json())
+      .then(({ workflows: list }) => {
+        if (cancelled || !Array.isArray(list)) throw new Error("bad list");
+        for (const definition of list) registerWorkflowDefinition(definition);
+        setDefinitions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setDefinitions(Object.values(workflows));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const caseParam = firstValue(params.case);
   const workflowParam = firstValue(params.workflow);
 
-  const decoded = caseParam ? readCaseParam(caseParam) : null;
-  const unreadable = (caseParam !== undefined && decoded === null)
-    || (workflowParam !== undefined && !isWorkflowId(workflowParam));
+  if (!definitions) {
+    return (
+      <main className={styles.page}>
+        <p role="status">{t("caseCard.loading")}</p>
+      </main>
+    );
+  }
 
-  const sampleWorkflow: WorkflowId = isWorkflowId(workflowParam) ? workflowParam : "bereavement";
+  const decoded = caseParam ? readCaseParam(caseParam) : null;
+  const sampleWorkflow = workflowParam && getWorkflowDefinition(workflowParam)
+    ? workflowParam
+    : "bereavement";
   const snapshot = decoded ?? sampleCase(sampleWorkflow);
+  const unreadable = (caseParam !== undefined && decoded === null)
+    || (workflowParam !== undefined && !getWorkflowDefinition(workflowParam));
   const isSample = decoded === null;
 
-  const seed = workflows[snapshot.workflowId];
+  const seed = getWorkflowDefinition(snapshot.workflowId);
+  if (!seed) return null;
   const stateById = new Map(snapshot.nodes.map((entry) => [entry.id, entry.state]));
   const steps = seed.nodes.map((node) => ({
     node,
@@ -366,9 +400,9 @@ export default function CaseCardPage({
 
       <nav className={styles.samples}>
         <p className={styles.eyebrow}>{t("caseCard.samples.title")}</p>
-        {workflowIds.map((id) => (
-          <a key={id} href={`/case-card?workflow=${id}`}>
-            {translate(workflows[id].title, locale)}
+        {definitions.map((definition) => (
+          <a key={definition.id} href={`/case-card?workflow=${definition.id}`}>
+            {translate(definition.title, locale)}
           </a>
         ))}
       </nav>

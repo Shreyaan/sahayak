@@ -7,17 +7,25 @@ import { t as translate, tList, type Locale } from "@/lib/locale";
 import { stopMediaStream } from "@/lib/media";
 import {
   findNode,
+  getWorkflowDefinition,
   nodeNote,
+  registerWorkflowDefinition,
   startCase,
-  workflowIds,
   workflows,
   type CaseSnapshot,
-  type WorkflowId,
+  type WorkflowDefinition,
 } from "@/lib/workflow";
 import { ContributorPanel } from "./contributor-panel";
 import { LanguageSwitcher } from "./language-switcher";
 
 type Message = { from: "sahayak" | "citizen"; text: string };
+
+type StoredCase = {
+  id: string;
+  workflowId: string;
+  snapshot: CaseSnapshot;
+  updatedAt: string;
+};
 
 /** Carries the live case to the Case Card, which re-reads all content from the seed. */
 function caseCardHref(caseSnapshot: CaseSnapshot): string {
@@ -36,6 +44,9 @@ export default function Home() {
   const locale = useLocale() as Locale;
 
   const [contributorMode, setContributorMode] = useState(false);
+  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>(Object.values(workflows));
+  const [savedCases, setSavedCases] = useState<StoredCase[]>([]);
+  const [caseId, setCaseId] = useState<string | null>(null);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [message, setMessage] = useState("");
@@ -76,6 +87,34 @@ export default function Home() {
     setMessages((current) => [...current, { from: "sahayak", text: reply }]);
   }
 
+  /** Re-reads every journey (bundled and user-added) into the client registry. */
+  async function refreshWorkflows() {
+    try {
+      const response = await fetch("/api/workflows");
+      const result = await response.json();
+      if (!Array.isArray(result.workflows)) return;
+      for (const definition of result.workflows) registerWorkflowDefinition(definition);
+      setDefinitions(result.workflows);
+    } catch {
+      // The bundled definitions are already registered; nothing to do.
+    }
+  }
+
+  async function refreshCases() {
+    try {
+      const response = await fetch("/api/cases");
+      const result = await response.json();
+      if (Array.isArray(result.cases)) setSavedCases(result.cases);
+    } catch {
+      setSavedCases([]);
+    }
+  }
+
+  useEffect(() => {
+    void refreshWorkflows();
+    void refreshCases();
+  }, []);
+
   /**
    * The server is the only authority for case transitions: whatever snapshot it
    * returns replaces local state. Nothing is decided on the client. The reply
@@ -91,7 +130,7 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, locale, caseSnapshot }),
+        body: JSON.stringify({ ...body, locale, caseSnapshot, ...(caseId ? { caseId } : {}) }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Request failed");
@@ -122,11 +161,13 @@ export default function Home() {
     void reply(value);
   }
 
-  function startJourney(workflowId: WorkflowId) {
-    const workflow = workflows[workflowId];
-    const first = findNode(workflowId, workflow.firstNodeId);
+  /** Opens a case with its greeting, whether it came from the server or locally. */
+  function openCase(caseSnapshot: CaseSnapshot, id: string | null) {
+    const definition = getWorkflowDefinition(caseSnapshot.workflowId);
+    const first = definition && findNode(caseSnapshot.workflowId, definition.firstNodeId);
 
-    setCaseSnapshot(startCase(workflowId));
+    setCaseId(id);
+    setCaseSnapshot(caseSnapshot);
     setMessage("");
     setMessages([
       { from: "sahayak", text: text("chat.greeting") },
@@ -134,11 +175,30 @@ export default function Home() {
     ]);
   }
 
+  async function startJourney(workflowId: string) {
+    try {
+      const response = await fetch("/api/cases", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workflowId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+
+      openCase(result.caseSnapshot, result.caseId);
+    } catch {
+      // The case still runs without persistence when the server call fails.
+      openCase(startCase(workflowId), null);
+    }
+  }
+
   function resetDemo() {
     stopActiveRecording(true);
     setCaseSnapshot(null);
+    setCaseId(null);
     setMessages([]);
     setMessage("");
+    void refreshCases();
   }
 
   async function toggleRecording() {
@@ -219,7 +279,7 @@ export default function Home() {
     setContributorMode((current) => !current);
   }
 
-  const workflow = caseSnapshot && workflows[caseSnapshot.workflowId];
+  const workflow = caseSnapshot && getWorkflowDefinition(caseSnapshot.workflowId);
   const openNode = caseSnapshot?.nodes.find((node) => node.state === "needs-you");
   const current = caseSnapshot && openNode ? findNode(caseSnapshot.workflowId, openNode.id) : undefined;
   const waiting = caseSnapshot?.nodes.some((node) => node.state === "verifying") ?? false;
@@ -249,7 +309,9 @@ export default function Home() {
         </div>
       </header>
 
-      {contributorMode ? <ContributorPanel /> : !caseSnapshot || !workflow ? (
+      {contributorMode ? (
+        <ContributorPanel onWorkflowAdded={() => void refreshWorkflows()} />
+      ) : !caseSnapshot || !workflow ? (
         <>
           <section className="intro">
             <p className="eyebrow">{common("tagline")}</p>
@@ -259,15 +321,48 @@ export default function Home() {
 
           <section className="journeys">
             <div className="journey-grid">
-              {workflowIds.map((id) => (
-                <button key={id} className="journey" type="button" onClick={() => startJourney(id)}>
-                  <strong>{translate(workflows[id].title, locale)}</strong>
-                  <small>{translate(workflows[id].subtitle, locale)}</small>
+              {definitions.map((definition) => (
+                <button
+                  key={definition.id}
+                  className="journey"
+                  type="button"
+                  onClick={() => void startJourney(definition.id)}
+                >
+                  <strong>{translate(definition.title, locale)}</strong>
+                  <small>{translate(definition.subtitle, locale)}</small>
                   <span className="journey-go">{text("journeyStart")}</span>
                 </button>
               ))}
             </div>
           </section>
+
+          {savedCases.length > 0 && (
+            <section className="journeys">
+              <p className="eyebrow">{text("yourCases.heading")}</p>
+              <div className="journey-grid">
+                {savedCases.map((stored) => {
+                  const definition = getWorkflowDefinition(stored.snapshot.workflowId);
+
+                  return (
+                    <button
+                      key={stored.id}
+                      className="journey"
+                      type="button"
+                      onClick={() => openCase(stored.snapshot, stored.id)}
+                    >
+                      <strong>
+                        {definition
+                          ? translate(definition.title, locale)
+                          : stored.snapshot.workflowId}
+                      </strong>
+                      <small>{text("yourCases.day", { day: stored.snapshot.day })}</small>
+                      <span className="journey-go">{text("yourCases.resume")}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </>
       ) : (
         <>

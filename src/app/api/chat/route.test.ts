@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { startCase } from "@/lib/workflow";
+import { resetMemoryStore, store } from "@/lib/store";
+import { compileWorkflow, type WorkflowSpec } from "@/lib/custom-workflow";
+import { registerWorkflowDefinition, startCase } from "@/lib/workflow";
 import { POST } from "./route";
 
 const originalKey = process.env.OPENROUTER_API_KEY;
@@ -255,6 +257,51 @@ describe("POST /api/chat", () => {
   test("rejects an unsupported locale", async () => {
     const response = await POST(
       chatRequest({ message: "हाँ", locale: "fr", caseSnapshot: bereavement }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("persists the case when a caseId is given", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    resetMemoryStore();
+
+    const caseId = crypto.randomUUID();
+    const response = await POST(
+      chatRequest({ message: "हाँ", caseId, caseSnapshot: bereavement }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const stored = await store.listCases(10);
+    expect(stored.map((entry) => entry.id)).toContain(caseId);
+    expect(stored[0].snapshot.nodes[0].state).toBe("done");
+  });
+
+  test("runs a user-added workflow through the same validation and engine", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+
+    const spec: WorkflowSpec = {
+      title: "Getting a ration card",
+      steps: [{ title: "Check the documents", kind: "confirm" }],
+    };
+    registerWorkflowDefinition(compileWorkflow(spec, "custom-ration-card"));
+    const snapshot = startCase("custom-ration-card");
+
+    const response = await POST(
+      chatRequest({ message: "हाँ", caseSnapshot: snapshot }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    // The confirm step completed and the closing node opened.
+    expect(body.caseSnapshot.nodes[0].state).toBe("done");
+    expect(body.caseSnapshot.nodes[1].state).toBe("needs-you");
+  });
+
+  test("rejects a snapshot naming a workflow that does not exist", async () => {
+    const response = await POST(
+      chatRequest({ message: "हाँ", caseSnapshot: { ...bereavement, workflowId: "invented" } }),
     );
 
     expect(response.status).toBe(400);
