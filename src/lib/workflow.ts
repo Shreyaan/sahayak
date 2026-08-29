@@ -71,6 +71,9 @@ export type WorkflowDefinition = {
   subtitle: Localized;
   firstNodeId: string;
   nodes: WorkflowNode[];
+  /** How this journey entered Sahayak: bundled seed, web form, or an AI clerk. */
+  authoredBy?: "bundled" | "web-form" | "mcp";
+  authoredAt?: string;
 };
 
 export type WorkflowId = "bereavement" | "scholarship";

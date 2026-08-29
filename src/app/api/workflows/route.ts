@@ -1,23 +1,14 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { isRateLimited } from "@/lib/rate-limit";
 import { store } from "@/lib/store";
-import { compileWorkflow, assignWorkflowId, type WorkflowSpec } from "@/lib/custom-workflow";
+import {
+  compileWorkflow,
+  assignWorkflowId,
+  workflowSpecSchema,
+  type WorkflowSpec,
+} from "@/lib/custom-workflow";
 import { registerWorkflowDefinition, workflowIds, type WorkflowDefinition } from "@/lib/workflow";
 import { listAllWorkflowDefinitions, loadCustomWorkflows } from "@/lib/workflow-registry";
-
-const stepSchema = z.object({
-  title: z.string().trim().min(1).max(160),
-  detail: z.string().trim().max(500).optional(),
-  ask: z.string().trim().max(300).optional(),
-  kind: z.enum(["confirm", "visit", "desk"]),
-});
-
-const specSchema = z.object({
-  title: z.string().trim().min(3).max(120),
-  subtitle: z.string().trim().max(160).optional(),
-  steps: z.array(stepSchema).min(1).max(12),
-}).strict();
 
 /**
  * Best-effort bilingual pass: when the model is configured it fills in the
@@ -95,7 +86,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests. Please try again shortly." }, { status: 429 });
   }
 
-  const parsed = specSchema.safeParse(await request.json().catch(() => null));
+  const parsed = workflowSpecSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "A workflow needs a title and at least one step." }, { status: 400 });
   }
@@ -108,7 +99,11 @@ export async function POST(request: Request) {
   ]);
   const id = assignWorkflowId(spec, taken);
   const compiled = compileWorkflow(spec, id);
-  const definition = await translateDefinition(compiled);
+  const definition = await translateDefinition({
+    ...compiled,
+    authoredBy: "web-form" as const,
+    authoredAt: new Date().toISOString(),
+  });
 
   registerWorkflowDefinition(definition);
 
