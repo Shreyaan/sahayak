@@ -45,6 +45,16 @@ deterministic demo: the workflow engine, both journeys, artifacts, and the Case
 Card all work without a provider. Speech and AI phrasing simply switch off, and
 the routes report that they are not configured.
 
+## Deploying
+
+Deploys to Railway from this repo with no database — the app is stateless. Case
+state lives in the client and travels in the Case Card link; the rate limiter
+and the corroboration ledger are in-memory and reset on redeploy.
+
+`railway.json` pins the build and start commands. Set the environment variables
+above in the Railway service; with none set, the deterministic demo still runs
+end to end.
+
 ## Verifying
 
 ```bash
