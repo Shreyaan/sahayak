@@ -399,7 +399,13 @@ export default function Home() {
         </>
       )}
 
-      <footer>Independent hackathon prototype. Not affiliated with any government body.</footer>
+      <footer>
+        <p>Independent hackathon prototype. Not affiliated with any government body.</p>
+        <nav className="footer-links">
+          <a href="/honesty">क्या असली, क्या नमूना · What is real</a>
+          <a href="/case-card?workflow=bereavement">नमूना Case Card · Sample</a>
+        </nav>
+      </footer>
     </main>
   );
 }
