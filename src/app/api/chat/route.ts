@@ -2,34 +2,63 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { isStepCount, tool, ToolLoopAgent } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { replyToCitizen } from "@/lib/reply";
 import { isRateLimited } from "@/lib/rate-limit";
+import {
+  advanceDay,
+  applyCitizenReply,
+  currentNode,
+  workflows,
+  type CaseSnapshot,
+} from "@/lib/workflow";
 
-const caseSchema = z.object({
-  id: z.literal("bereavement-demo"),
-  nodes: z.tuple([
+/**
+ * A snapshot carries only node ids and states — never titles, questions, or
+ * policy text. All content is read from the bundled seed on the server, so a
+ * client cannot introduce a step or a requirement that the workflow never had.
+ */
+const caseSnapshotSchema = z.object({
+  workflowId: z.enum(["bereavement", "scholarship"]),
+  nodes: z.array(
     z.object({
-      id: z.literal("confirm-name"),
-      title: z.literal("नाम की पुष्टि"),
-      state: z.enum(["pending", "needs-you", "done"]),
+      id: z.string().max(60),
+      state: z.enum(["pending", "needs-you", "verifying", "blocked", "done"]),
+      note: z.string().max(200).optional(),
+      startedDay: z.number().int().min(0).max(400).optional(),
     }).strict(),
-    z.object({
-      id: z.literal("bank-claim"),
-      title: z.literal("बैंक क्लेम तैयार करें"),
-      state: z.enum(["pending", "needs-you", "done"]),
-    }).strict(),
-  ]),
+  ).max(20),
+  artifacts: z.array(
+    z.enum([
+      "correction-declaration",
+      "bank-letter",
+      "rti-draft",
+      "npci-checklist",
+      "escalation-draft",
+    ]),
+  ).max(10),
+  day: z.number().int().min(0).max(400),
 }).strict().refine(
-  ({ nodes }) =>
-    (nodes[0].state === "needs-you" && nodes[1].state === "pending")
-    || (nodes[0].state === "done" && nodes[1].state === "needs-you"),
-  { message: "Case state is not allowed." },
+  (snapshot) => {
+    const seeded = workflows[snapshot.workflowId].nodes.map((node) => node.id);
+    return snapshot.nodes.length === seeded.length
+      && snapshot.nodes.every((node, index) => node.id === seeded[index]);
+  },
+  { message: "Case nodes do not match the bundled workflow." },
 );
 
 const requestSchema = z.object({
-  message: z.string().trim().min(1).max(2_000),
-  caseSnapshot: caseSchema,
-}).strict();
+  action: z.enum(["reply", "advance-day"]).default("reply"),
+  message: z.string().trim().max(2_000).default(""),
+  caseSnapshot: caseSnapshotSchema,
+}).strict().refine(
+  ({ action, message }) => action === "advance-day" || message.length > 0,
+  { message: "A reply needs a message." },
+);
+
+function resolve(action: "reply" | "advance-day", caseSnapshot: CaseSnapshot, message: string) {
+  return action === "advance-day"
+    ? advanceDay(caseSnapshot)
+    : applyCitizenReply(caseSnapshot, message);
+}
 
 export async function POST(request: Request) {
   if (isRateLimited(request)) {
@@ -42,24 +71,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Message and case are required." }, { status: 400 });
   }
 
-  const { message, caseSnapshot } = parsed.data;
-  const authorizedOutcome = replyToCitizen(caseSnapshot, message);
+  const { action, message, caseSnapshot } = parsed.data;
+  const authorized = resolve(action, caseSnapshot, message);
   const apiKey = process.env.OPENROUTER_API_KEY;
 
-  if (!apiKey) {
-    return NextResponse.json(authorizedOutcome);
+  if (!apiKey || action === "advance-day") {
+    return NextResponse.json(authorized);
   }
 
+  const node = currentNode(caseSnapshot);
   const openrouter = createOpenRouter({ apiKey });
   const agent = new ToolLoopAgent({
     model: openrouter(process.env.AI_MODEL || "openai/gpt-5.6-luna"),
     instructions:
-      "You are Sahayak, a concise Hindi-first government-work helper. Call getCaseOutcome before answering. Never add policy, fees, requirements, or actions that are not in its result.",
+      "You are Sahayak, a concise Hindi-first government-work clerk. Call getCaseOutcome before answering. "
+      + "Never add policy, fees, offices, requirements, timelines, or actions that are not in its result. "
+      + "You never decide whether a case advances.",
     tools: {
       getCaseOutcome: tool({
-        description: "Get the only authorized case transition and response.",
+        description: "The only authorized case transition, reply, and current step facts.",
         inputSchema: z.object({}),
-        execute: async () => authorizedOutcome,
+        execute: async () => ({
+          reply: authorized.reply,
+          currentStep: node && { title: node.title, detail: node.detail, ask: node.ask },
+          caseSnapshot: authorized.caseSnapshot,
+        }),
       }),
     },
     stopWhen: isStepCount(3),
@@ -67,8 +103,9 @@ export async function POST(request: Request) {
 
   try {
     await agent.generate({ prompt: message, timeout: 15_000 });
-    return NextResponse.json(authorizedOutcome);
   } catch {
-    return NextResponse.json(authorizedOutcome);
+    // The deterministic outcome below stands regardless of provider failure.
   }
+
+  return NextResponse.json(authorized);
 }
