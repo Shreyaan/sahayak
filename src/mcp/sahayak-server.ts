@@ -5,7 +5,7 @@ import {
   assignWorkflowId,
   reviewFlagsFor,
   suggestionsFor,
-  workflowSpecSchema,
+  workflowSpecShape,
 } from "@/lib/custom-workflow";
 import { store } from "@/lib/store";
 import { registerWorkflowDefinition, workflowIds } from "@/lib/workflow";
@@ -27,7 +27,7 @@ export function buildSahayakMcpServer(): McpServer {
       instructions:
         "Sahayak turns lived experiences with government processes into guided, step-by-step workflows that citizens can walk through with speech or text. "
         + "To add a workflow: listen to the contributor's story, then propose it with propose_workflow. "
-        + "Before proposing, confirm with the contributor: (1) the exact order of steps; (2) for each step, whether it is a simple 'confirm' (ask and move on), a 'visit' (an in-person office counter trip), or a 'desk' (submitting something and waiting for a desk to reply); (3) what documents to carry at any visit; (4) realistic waiting times for desk checks. "
+        + "Before proposing, confirm with the contributor: (1) the exact order of steps; (2) for each step, whether it is a simple 'confirm' (ask and move on), a 'visit' (an in-person office counter trip), a 'website' (an action on a public portal, with its exact https URL), or a 'desk' (submitting something and waiting for a desk to reply); (3) what documents to carry at any visit; (4) realistic waiting times for desk checks. "
         + "Write step titles as short actions in the contributor's own language. "
         + "Never invent fees, offices, or requirements the contributor did not mention. If the contributor mentions paying an agent or middleman, warn them and do not make it a step. "
         + "After proposing, share the returned preview link so the contributor can review the journey before telling others about it.",
@@ -93,7 +93,8 @@ export function buildSahayakMcpServer(): McpServer {
         .map((node) => ({
           title: node.title.en,
           detail: node.detail.en,
-          kind: node.visit ? "visit" : node.verify ? "desk" : "confirm",
+          kind: node.link ? "website" : node.visit ? "visit" : node.verify ? "desk" : "confirm",
+          ...(node.link ? { url: node.link.url } : {}),
         }));
 
       return {
@@ -109,10 +110,10 @@ export function buildSahayakMcpServer(): McpServer {
       title: "Propose a workflow",
       description:
         "Add a new citizen journey to Sahayak from a contributor's lived experience. "
-        + "Each step must be one of: 'confirm' (ask the citizen and move on), 'visit' (an in-person office trip), or 'desk' (submit and wait for a desk to reply, with a verification clock). "
+        + "Each step must be one of: 'confirm' (ask the citizen and move on), 'visit' (an in-person office trip), 'website' (an action on a public portal — pass its exact https URL), or 'desk' (submit and wait for a desk to reply, with a verification clock). "
         + "The closing case-summary step is added automatically. "
         + "The journey is compiled by Sahayak's deterministic engine — the tool returns a preview link and review suggestions to discuss with the contributor.",
-      inputSchema: workflowSpecSchema.extend({
+      inputSchema: workflowSpecShape.extend({
         contributorNote: z.string().trim().max(500).optional(),
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },

@@ -391,6 +391,13 @@ export default function Home() {
                       </summary>
                       <p className="node-detail">{translate(definition.detail, locale)}</p>
                       {note && <p className="node-note">{translate(note, locale)}</p>}
+                      {definition.link && (
+                        <p className="node-link">
+                          <a href={definition.link.url} target="_blank" rel="noopener noreferrer">
+                            {text("web.open")}
+                          </a>
+                        </p>
+                      )}
                       {isCurrent && definition.visit && (
                         <div className="visit-card">
                           <p className="eyebrow">{text("visit.eyebrow")}</p>
@@ -450,6 +457,14 @@ export default function Home() {
                 <h2>{translate(current.title, locale)}</h2>
                 <p className="action-detail">{translate(current.detail, locale)}</p>
                 <p className="action-question">{translate(current.ask, locale)}</p>
+                {current.link && (
+                  <p className="action-link">
+                    <a href={current.link.url} target="_blank" rel="noopener noreferrer">
+                      🔗 {text("web.open")}
+                    </a>
+                    <small>{translate(current.link.collect, locale)}</small>
+                  </p>
+                )}
                 <div className="action-buttons">
                   <button
                     className="primary-action"

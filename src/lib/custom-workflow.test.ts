@@ -6,7 +6,13 @@ import {
   registerWorkflowDefinition,
   startCase,
 } from "./workflow";
-import { assignWorkflowId, compileWorkflow, type WorkflowSpec } from "./custom-workflow";
+import {
+  assignWorkflowId,
+  compileWorkflow,
+  isSafePublicUrl,
+  workflowSpecSchema,
+  type WorkflowSpec,
+} from "./custom-workflow";
 
 const spec: WorkflowSpec = {
   title: "Getting a caste certificate",
@@ -61,5 +67,57 @@ describe("compileWorkflow", () => {
 
     expect(assignWorkflowId(spec, new Set())).toBe("custom-getting-a-caste-certificate");
     expect(assignWorkflowId(spec, taken)).toBe("custom-getting-a-caste-certificate-2");
+  });
+
+  test("a website step carries a validated link the citizen can open", () => {
+    const websiteSpec: WorkflowSpec = {
+      title: "Track the payment online",
+      steps: [
+        { title: "Open the PFMS tracker", kind: "website", url: "https://pfms.nic.in/track" },
+        { title: "Enter the application number", kind: "confirm" },
+      ],
+    };
+
+    const definition = compileWorkflow(websiteSpec, "custom-track");
+    const webStep = definition.nodes.find((node) => node.id === "step-1")!;
+
+    expect(webStep.type).toBe("online-action");
+    expect(webStep.link?.url).toBe("https://pfms.nic.in/track");
+    expect(webStep.visit).toBeUndefined();
+    expect(webStep.verify).toBeUndefined();
+
+    registerWorkflowDefinition(definition);
+    const snapshot = startCase("custom-track");
+    const answered = applyCitizenReply(snapshot, "हाँ").caseSnapshot;
+    expect(answered.nodes[0].state).toBe("done");
+    expect(answered.nodes[1].state).toBe("needs-you");
+  });
+
+  test("website URLs must be public https addresses", () => {
+    expect(isSafePublicUrl("https://pfms.nic.in/track")).toBe(true);
+    expect(isSafePublicUrl("http://pfms.nic.in/track")).toBe(false);
+    expect(isSafePublicUrl("https://localhost/track")).toBe(false);
+    expect(isSafePublicUrl("https://127.0.0.1/track")).toBe(false);
+    expect(isSafePublicUrl("https://192.168.1.4/admin")).toBe(false);
+    expect(isSafePublicUrl("https://172.16.0.9/internal")).toBe(false);
+    expect(isSafePublicUrl("https://10.0.0.5/x")).toBe(false);
+    expect(isSafePublicUrl("https://user:pass@example.com")).toBe(false);
+    expect(isSafePublicUrl("not a url")).toBe(false);
+  });
+
+  test("the shared schema rejects a website step without a safe URL", () => {
+    const bad = workflowSpecSchema.safeParse({
+      title: "Track the payment online",
+      steps: [{ title: "Open the tracker", kind: "website" }],
+    });
+
+    expect(bad.success).toBe(false);
+
+    const misplaced = workflowSpecSchema.safeParse({
+      title: "A visit journey",
+      steps: [{ title: "Go there", kind: "visit", url: "https://example.com" }],
+    });
+
+    expect(misplaced.success).toBe(false);
   });
 });

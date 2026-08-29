@@ -140,6 +140,11 @@ function StepRow({
     <li className={styles.step}>
       <strong>{translate(node.title, locale)}</strong>
       <span>{translate(node.detail, locale)}</span>
+      {node.link && (
+        <a href={node.link.url} target="_blank" rel="noopener noreferrer">
+          {node.link.url}
+        </a>
+      )}
       {note && <em className={styles.note}>{note}</em>}
     </li>
   );
