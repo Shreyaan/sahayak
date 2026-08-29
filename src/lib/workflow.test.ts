@@ -62,7 +62,7 @@ describe("applyCitizenReply", () => {
     const result = applyCitizenReply(caseSnapshot, "मुझे समझ नहीं आय");
 
     expect(result.caseSnapshot).toEqual(caseSnapshot);
-    expect(result.reply).toBe(currentNode(caseSnapshot)?.ask);
+    expect(result.reply).toBe(currentNode(caseSnapshot)!.ask);
   });
 
   test("a negative reply never advances a confirmation-only node", () => {

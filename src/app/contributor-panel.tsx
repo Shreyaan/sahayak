@@ -3,8 +3,16 @@
 import { FormEvent, useState } from "react";
 import type { ContributionDraft } from "@/lib/contribution";
 
-const example =
-  "After my father died, I used Form 4 for a bank claim. The claimant name appeared as Shyam Sundar.";
+const examples = [
+  {
+    label: "Bereavement example",
+    text: "After my father died, I used Form 4 for a bank claim. The claimant name appeared as Shyam Sundar.",
+  },
+  {
+    label: "Scholarship example",
+    text: "NSP showed Released to PFMS but nothing reached my account. The branch said NPCI seeding was missing.",
+  },
+];
 
 export function ContributorPanel() {
   const [input, setInput] = useState("");
@@ -55,9 +63,16 @@ export function ContributorPanel() {
           maxLength={2_000}
         />
         <div className="contribution-actions">
-          <button type="button" className="secondary-action" onClick={() => setInput(example)}>
-            Fill example
-          </button>
+          {examples.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="secondary-action"
+              onClick={() => setInput(item.text)}
+            >
+              {item.label}
+            </button>
+          ))}
           <button type="submit" className="primary-action" disabled={busy || !input.trim()}>
             {busy ? "Compiling…" : "Compile draft"}
           </button>
@@ -96,11 +111,24 @@ export function ContributorPanel() {
           </section>
 
           <p className="draft-meta">
-            Source: {draft.sourceType} · Corroboration: {draft.corroborationCount}
+            Source: {draft.sourceType} · Corroboration: {draft.corroborationCount} ·
+            Matched seed: {draft.workflowId}
+          </p>
+          <p className="draft-meta">
+            {draft.conflicts.length
+              ? "Held for review: a conflict with the bundled source is unresolved."
+              : draft.corroborationCount >= 2
+                ? "Corroborated by more than one contributor, so this draft may be proposed for publication."
+                : "One report so far. A second matching contribution would corroborate it."}
           </p>
           <button type="button" className="simulated-publish" disabled>
-            Simulated publish — review required
+            {draft.status === "publishable draft"
+              ? "Simulated publish — publishable draft"
+              : "Simulated publish — review required"}
           </button>
+          <p className="draft-meta">
+            Publication is simulated. A contribution never becomes official guidance in this prototype.
+          </p>
         </section>
       )}
     </section>

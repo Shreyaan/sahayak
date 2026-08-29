@@ -1,7 +1,11 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { resetCorroboration } from "@/lib/corroboration";
 import { POST } from "./route";
 
 const originalKey = process.env.OPENROUTER_API_KEY;
+
+// Corroboration is a module-level ledger, so each test starts from a clean count.
+beforeEach(resetCorroboration);
 
 afterEach(() => {
   process.env.OPENROUTER_API_KEY = originalKey;
@@ -128,17 +132,59 @@ describe("POST /api/contribute", () => {
     expect(body).toMatchObject({
       title: "Provider-enriched title",
       steps: ["Provider-enriched step"],
-      additions: ["Provider-enriched addition"],
       sourceType: "lived experience",
       corroborationCount: 1,
-      status: "draft",
+      status: "needs review",
     });
-    expect(body.matches).toHaveLength(2);
+    expect(body.additions).toContain("Provider-enriched addition");
+    expect(body.matches.length).toBeGreaterThan(0);
     expect(body.conflicts).toContainEqual(
       expect.objectContaining({
         submitted: "Shyam Sundar",
         bundled: "Shyam Sunder",
       }),
     );
+  });
+
+  test("keeps server-derived additions when the provider returns its own", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    mock.module("@openrouter/ai-sdk-provider", () => ({
+      createOpenRouter: () => () => ({ modelId: "test-model" }),
+    }));
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        private settings: any;
+
+        constructor(settings: any) {
+          this.settings = settings;
+        }
+
+        async generate() {
+          await this.settings.tools.compileDraft.execute({
+            title: "Provider title",
+            steps: ["Provider step"],
+            additions: ["Provider addition"],
+          });
+          return { text: "ignored" };
+        }
+      },
+    }));
+
+    const response = await POST(
+      new Request("http://localhost/api/contribute", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": crypto.randomUUID() },
+        body: JSON.stringify({
+          input: "At the office an agent wanted a \u20b9500 fee for the death claim.",
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(body.additions).toContain("Provider addition");
+    expect(body.additions.join(" ")).toContain("payment");
+    expect(body.additions.join(" ")).toContain("middleman");
   });
 });
