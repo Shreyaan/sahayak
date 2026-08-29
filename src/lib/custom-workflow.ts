@@ -149,13 +149,19 @@ function visitCard(step: WorkflowStepSpec) {
     office: both(step.title),
     why: both(step.detail || step.title),
     carry: [
-      both("Original documents and a photocopy set"),
-      both("Your ID proof (Aadhaar or similar)"),
-      both("This Case Card, printed or on your phone"),
+      { hi: "मूल दस्तावेज़ और उनकी फ़ोटोकॉपी", en: "Original documents and a photocopy set" },
+      { hi: "अपना पहचान पत्र (आधार आदि)", en: "Your ID proof (Aadhaar or similar)" },
+      { hi: "यह Case Card — प्रिंट या फ़ोन पर", en: "This Case Card, printed or on your phone" },
     ],
-    script: both(`I have come for: ${step.title}. Please give me an acknowledgement.`),
-    expect: both("About 30 minutes"),
-    collect: both("The acknowledgement with any reference number written on it"),
+    script: {
+      hi: `मैं इस काम के लिए आया हूँ: ${step.title}। कृपया पावती दीजिए।`,
+      en: `I have come for: ${step.title}. Please give me an acknowledgement.`,
+    },
+    expect: { hi: "लगभग 30 मिनट", en: "About 30 minutes" },
+    collect: {
+      hi: "पावती, और उस पर दर्ज कोई भी संदर्भ संख्या",
+      en: "The acknowledgement, and any reference number written on it",
+    },
   };
 }
 
@@ -173,19 +179,32 @@ export function compileWorkflow(spec: WorkflowSpec, id: string): WorkflowDefinit
     const nodeId = `step-${index + 1}`;
     const title = both(step.title);
     const detail = both(step.detail || step.title);
+
     const ask = step.kind === "website"
-      ? both(`क्या आपने वेबसाइट पर यह काम पूरा कर लिया? (Have you finished this on the website: ${step.title}?)`)
-      : both(step.ask || `क्या मैं आगे बढ़ूँ? (Shall I go ahead with: ${step.title}?)`);
+      ? (step.ask ? both(step.ask) : {
+          hi: `क्या आपने वेबसाइट पर “${step.title}” पूरा कर लिया?`,
+          en: `Have you finished this on the website: ${step.title}?`,
+        })
+      : (step.ask ? both(step.ask) : {
+          hi: `क्या मैं आगे बढ़ूँ — ${step.title}?`,
+          en: `Shall I go ahead with: ${step.title}?`,
+        });
 
     const onConfirm = step.kind === "desk"
       ? {
           state: "verifying" as const,
-          reply: both(`${step.title} — जमा हो गया। जाँच शुरू है, मैं नज़र रखता हूँ. (Submitted. The desk is checking — I am keeping watch.)`),
+          reply: {
+            hi: `${step.title} — जमा हो गया। जाँच शुरू है, मैं नज़र रखता हूँ।`,
+            en: `${step.title} — submitted. The desk is checking; I am keeping watch.`,
+          },
         }
       : {
           state: "done" as const,
           opens: nextId,
-          reply: both(`${step.title} — पूरा हुआ। अगला कदम देखिए. (Done. Here is the next step.)`),
+          reply: {
+            hi: `${step.title} — पूरा हुआ। अगला कदम देखिए।`,
+            en: `${step.title} — done. Here is the next step.`,
+          },
         };
 
     return {
@@ -198,8 +217,11 @@ export function compileWorkflow(spec: WorkflowSpec, id: string): WorkflowDefinit
       link: step.kind === "website" && step.url
         ? {
             url: step.url,
-            action: both(`Open the website and complete: ${step.title}`),
-            collect: both("Any reference number or confirmation the site shows"),
+            action: { hi: `वेबसाइट खोलकर पूरा करें: ${step.title}`, en: `Open the website and complete: ${step.title}` },
+            collect: {
+              hi: "साइट पर दिखा कोई संदर्भ नंबर नोट कर लें।",
+              en: "Note down any reference number the site shows.",
+            },
           }
         : undefined,
       onConfirm,
@@ -209,7 +231,10 @@ export function compileWorkflow(spec: WorkflowSpec, id: string): WorkflowDefinit
             outcome: {
               state: "done" as const,
               opens: nextId,
-              reply: both(`${step.title} — जाँच पूरी हुई, सब ठीक है. (The desk replied: all good, moving on.)`),
+              reply: {
+                hi: `${step.title} — जाँच पूरी हुई, सब ठीक है।`,
+                en: `${step.title} — the desk replied: all good, moving on.`,
+              },
             },
           }
         : undefined,

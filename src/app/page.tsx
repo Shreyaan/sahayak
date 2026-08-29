@@ -277,8 +277,19 @@ export default function Home() {
   const declineText = current
     ? (current.declineLabel ? translate(current.declineLabel, locale) : text("action.noDefault"))
     : "";
+
+  // Speech must never repeat itself: skip the title and detail when the
+  // question already carries them.
+  const actionTitle = current ? translate(current.title, locale) : "";
+  const actionDetail = current ? translate(current.detail, locale) : "";
+  const actionAsk = current ? translate(current.ask, locale) : "";
+  const showDetail = Boolean(current) && actionDetail !== actionTitle;
   const spokenAction = current
-    ? `${translate(current.title, locale)}. ${translate(current.detail, locale)}. ${translate(current.ask, locale)}`
+    ? [
+        actionAsk.includes(actionTitle) ? null : actionTitle,
+        !showDetail || actionAsk.includes(actionDetail) ? null : actionDetail,
+        actionAsk,
+      ].filter(Boolean).join(". ")
     : "";
 
   return (
@@ -389,7 +400,11 @@ export default function Home() {
                         <strong>{translate(definition.title, locale)}</strong>
                         <small>{text(`state.${node.state}`)}</small>
                       </summary>
-                      <p className="node-detail">{translate(definition.detail, locale)}</p>
+                      <p className="node-detail">
+                        {translate(definition.detail, locale) !== translate(definition.title, locale)
+                          ? translate(definition.detail, locale)
+                          : null}
+                      </p>
                       {note && <p className="node-note">{translate(note, locale)}</p>}
                       {definition.link && (
                         <p className="node-link">
@@ -454,9 +469,9 @@ export default function Home() {
             {current ? (
               <>
                 <p className="eyebrow">{text("action.eyebrow")}</p>
-                <h2>{translate(current.title, locale)}</h2>
-                <p className="action-detail">{translate(current.detail, locale)}</p>
-                <p className="action-question">{translate(current.ask, locale)}</p>
+                <h2>{actionTitle}</h2>
+                {showDetail && <p className="action-detail">{actionDetail}</p>}
+                <p className="action-question">{actionAsk}</p>
                 {current.link && (
                   <p className="action-link">
                     <a href={current.link.url} target="_blank" rel="noopener noreferrer">
