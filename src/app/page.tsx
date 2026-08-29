@@ -2,10 +2,12 @@
 
 import { FormEvent, useRef, useState } from "react";
 import { initialCase, type CaseSnapshot } from "@/lib/case";
+import { ContributorPanel } from "./contributor-panel";
 
 type Message = { from: "sahayak" | "citizen"; text: string };
 
 export default function Home() {
+  const [contributorMode, setContributorMode] = useState(false);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot>(initialCase);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -103,8 +105,17 @@ export default function Home() {
     <main>
       <header>
         <div className="brand">सहायक <span>Sahayak</span></div>
-        <button className="author-link" type="button">योगदान दें · Contribute</button>
+        <button
+          className="author-link"
+          type="button"
+          aria-pressed={contributorMode}
+          onClick={() => setContributorMode((current) => !current)}
+        >
+          {contributorMode ? "नागरिक · Citizen" : "योगदान दें · Contribute"}
+        </button>
       </header>
+
+      {contributorMode ? <ContributorPanel /> : <>
 
       <section className="intro">
         <p className="eyebrow">परिवार में मृत्यु के बाद</p>
@@ -145,7 +156,7 @@ export default function Home() {
         {busy && <p className="bubble sahayak">सोच रहा हूँ…</p>}
       </section>
 
-      <form onSubmit={send}>
+      <form className="chat-form" onSubmit={send}>
         <button className={`mic ${recording ? "recording" : ""}`} type="button" onClick={toggleRecording} aria-label={recording ? "रिकॉर्डिंग रोकें" : "आवाज़ रिकॉर्ड करें"}>
           {recording ? "■" : "●"}
         </button>
@@ -159,6 +170,7 @@ export default function Home() {
       </form>
 
       <footer>Independent hackathon prototype. Not affiliated with any government body.</footer>
+      </>}
     </main>
   );
 }
