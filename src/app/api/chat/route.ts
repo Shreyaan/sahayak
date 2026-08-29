@@ -3,6 +3,7 @@ import { isStepCount, tool, ToolLoopAgent } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readIntent, type Intent } from "@/lib/intent";
+import { defaultLocale, locales, t, type Locale } from "@/lib/locale";
 import { isRateLimited } from "@/lib/rate-limit";
 import {
   advanceDay,
@@ -11,6 +12,7 @@ import {
   workflows,
   type CaseSnapshot,
 } from "@/lib/workflow";
+import type { Localized } from "@/lib/locale";
 
 export const maxDuration = 30;
 
@@ -52,11 +54,14 @@ const caseSnapshotSchema = z.object({
 const requestSchema = z.object({
   action: z.enum(["reply", "advance-day"]).default("reply"),
   message: z.string().trim().max(2_000).default(""),
+  locale: z.enum(locales).default(defaultLocale),
   caseSnapshot: caseSnapshotSchema,
 }).strict().refine(
   ({ action, message }) => action === "advance-day" || message.length > 0,
   { message: "A reply needs a message." },
 );
+
+const languageName: Record<Locale, string> = { hi: "Hindi", en: "English" };
 
 const intentSchema = z.object({
   intent: z.enum(["affirmative", "negative", "unclear"]),
@@ -71,6 +76,7 @@ async function readIntentWithClerk(
   apiKey: string,
   message: string,
   question: string,
+  locale: Locale,
 ): Promise<Intent> {
   let observed: Intent = "unknown";
 
@@ -78,10 +84,11 @@ async function readIntentWithClerk(
   const agent = new ToolLoopAgent({
     model: openrouter(process.env.AI_MODEL || "openai/gpt-5.6-luna"),
     instructions:
-      "You are Sahayak, a Hindi-first government-work clerk. You are given the question just asked "
-      + "and the citizen's reply. Call reportIntent exactly once to say whether the reply confirms "
-      + "the question, denies or corrects it, or is unclear. Report only what the citizen said. "
-      + "Never decide what happens to the case, and never state policy, fees, or outcomes.",
+      `You are Sahayak, a government-work clerk. The citizen is speaking ${languageName[locale]}, `
+      + "and may mix in English words. You are given the question just asked and the citizen's reply. "
+      + "Call reportIntent exactly once to say whether the reply confirms the question, denies or "
+      + "corrects it, or is unclear. Report only what the citizen said. Never decide what happens to "
+      + "the case, and never state policy, fees, or outcomes.",
     tools: {
       reportIntent: tool({
         description: "Report how the citizen's reply answers the question.",
@@ -114,10 +121,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Message and case are required." }, { status: 400 });
   }
 
-  const { action, message, caseSnapshot } = parsed.data;
+  const { action, message, locale, caseSnapshot } = parsed.data;
+  const localize = ({ caseSnapshot: next, reply }: { caseSnapshot: CaseSnapshot; reply: Localized }) =>
+    ({ caseSnapshot: next, reply: t(reply, locale) });
 
   if (action === "advance-day") {
-    return NextResponse.json(advanceDay(caseSnapshot));
+    return NextResponse.json(localize(advanceDay(caseSnapshot)));
   }
 
   let intent = readIntent(message);
@@ -127,11 +136,11 @@ export async function POST(request: Request) {
   // The model is consulted only when the deterministic reader cannot decide.
   if (intent === "unknown" && apiKey && node) {
     try {
-      intent = await readIntentWithClerk(apiKey, message, node.ask);
+      intent = await readIntentWithClerk(apiKey, message, t(node.ask, locale), locale);
     } catch {
       // An unreadable reply simply re-asks the question below.
     }
   }
 
-  return NextResponse.json(applyIntent(caseSnapshot, intent));
+  return NextResponse.json(localize(applyIntent(caseSnapshot, intent)));
 }

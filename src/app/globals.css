@@ -230,3 +230,30 @@ footer { padding-top: 24px; color: #505a54; font-size: .7rem; text-align: center
   color: var(--green);
   font-size: .72rem;
 }
+
+.language-switcher {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line, #d8ded8);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.language-switcher button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #4a5450;
+  font-size: .74rem;
+  font-weight: 600;
+}
+
+.language-switcher button.active {
+  background: var(--green, #1f6f4a);
+  color: #fff;
+}
+
+.language-switcher button:disabled { opacity: .6; }

@@ -1,4 +1,5 @@
 import { readIntent, type Intent } from "./intent";
+import type { Localized } from "./locale";
 
 /**
  * The reusable typed step library. A workflow node names one of these types and
@@ -26,12 +27,12 @@ export type ArtifactId =
   | "escalation-draft";
 
 export type VisitCard = {
-  office: string;
-  why: string;
-  carry: string[];
-  script: string;
-  expect: string;
-  collect: string;
+  office: Localized;
+  why: Localized;
+  carry: Localized[];
+  script: Localized;
+  expect: Localized;
+  collect: Localized;
 };
 
 /** What one node does when an event resolves it. */
@@ -42,22 +43,22 @@ type Outcome = {
   opens?: string;
   /** A blocked node this outcome clears, so recovery closes what it recovered from. */
   resolves?: string;
-  reply: string;
+  reply: Localized;
   artifact?: ArtifactId;
-  note?: string;
+  note?: Localized;
 };
 
 export type WorkflowNode = {
   id: string;
   type: StepType;
-  title: string;
-  detail: string;
+  title: Localized;
+  detail: Localized;
   /** The clerk's question while this node is the current action. */
-  ask: string;
+  ask: Localized;
   visit?: VisitCard;
   /** Suggested-response chip wording, so a tap answers the actual question. */
-  confirmLabel?: string;
-  declineLabel?: string;
+  confirmLabel?: Localized;
+  declineLabel?: Localized;
   onConfirm: Outcome;
   onDecline?: Outcome;
   /** Desk verification: what the simulated desk returns after `slaDays`. */
@@ -66,8 +67,8 @@ export type WorkflowNode = {
 
 export type WorkflowDefinition = {
   id: WorkflowId;
-  title: string;
-  subtitle: string;
+  title: Localized;
+  subtitle: Localized;
   firstNodeId: string;
   nodes: WorkflowNode[];
 };
@@ -89,265 +90,444 @@ export type CaseSnapshot = {
   day: number;
 };
 
+/** The closing node both journeys end on. */
+const caseDoneNode: WorkflowNode = {
+  id: "case-done",
+  type: "case-complete",
+  title: { hi: "केस सार तैयार", en: "Case summary ready" },
+  detail: {
+    hi: "आपका Case Card बन गया है। इसे प्रिंट या साझा कर सकते हैं।",
+    en: "Your Case Card is ready. You can print it or share it.",
+  },
+  ask: {
+    hi: "क्या मैं आपका Case Card तैयार कर दूँ?",
+    en: "Shall I prepare your Case Card?",
+  },
+  onConfirm: {
+    state: "done",
+    reply: {
+      hi: "Case Card तैयार है। ऊपर से खोलकर प्रिंट कर सकते हैं।",
+      en: "Your Case Card is ready. Open it from the top to print it.",
+    },
+  },
+};
+
+/** The SLA breach note both journeys record after a three-day wait. */
+const threeDayBreachNote: Localized = {
+  hi: "समय-सीमा पार (नमूना): 3 दिन",
+  en: "Time limit crossed (simulated): 3 days",
+};
+
 const bereavement: WorkflowDefinition = {
   id: "bereavement",
-  title: "मृत्यु के बाद के दावे",
-  subtitle: "Bereavement claim",
+  title: { hi: "मृत्यु के बाद के दावे", en: "Bereavement claim" },
+  subtitle: { hi: "Bereavement claim", en: "Claims after a death in the family" },
   firstNodeId: "form4-explain",
   nodes: [
     {
       id: "form4-explain",
       type: "document-explain",
-      title: "Form 4 समझें",
-      detail: "Form 4 अस्पताल की मृत्यु सूचना है। बैंक और EPFO दोनों इसी से नाम मिलाते हैं।",
-      ask: "मैंने आपका Form 4 पढ़ लिया है। क्या मैं आगे बढ़ूँ?",
+      title: { hi: "Form 4 समझें", en: "Understand Form 4" },
+      detail: {
+        hi: "Form 4 अस्पताल की मृत्यु सूचना है। बैंक और EPFO दोनों इसी से नाम मिलाते हैं।",
+        en: "Form 4 is the hospital's notice of death. The bank and EPFO both match the name against it.",
+      },
+      ask: {
+        hi: "मैंने आपका Form 4 पढ़ लिया है। क्या मैं आगे बढ़ूँ?",
+        en: "I have read your Form 4. Shall I go ahead?",
+      },
       onConfirm: {
         state: "done",
         opens: "name-check",
-        reply: "ठीक है। अब नाम मिलान करते हैं।",
+        reply: {
+          hi: "ठीक है। अब नाम मिलान करते हैं।",
+          en: "Alright. Now let us check the name.",
+        },
       },
     },
     {
       id: "name-check",
       type: "identity-compare",
-      title: "नाम की पुष्टि",
-      detail: "Form 4 में नाम Shyam Sunder है। बैंक रिकॉर्ड में Shyam Sundar दर्ज है।",
-      ask: "Form 4 में नाम Shyam Sunder लिखा है। क्या यह सही है?",
-      confirmLabel: "हाँ, यही सही है",
-      declineLabel: "नहीं, बैंक में अलग है",
+      title: { hi: "नाम की पुष्टि", en: "Check the name" },
+      detail: {
+        hi: "Form 4 में नाम Shyam Sunder है। बैंक रिकॉर्ड में Shyam Sundar दर्ज है।",
+        en: "Form 4 has the name Shyam Sunder. The bank record has Shyam Sundar.",
+      },
+      ask: {
+        hi: "Form 4 में नाम Shyam Sunder लिखा है। क्या यह सही है?",
+        en: "Form 4 says the name is Shyam Sunder. Is that correct?",
+      },
+      confirmLabel: { hi: "हाँ, यही सही है", en: "Yes, that is correct" },
+      declineLabel: { hi: "नहीं, बैंक में अलग है", en: "No, the bank has it differently" },
       onConfirm: {
         state: "done",
         opens: "bank-claim",
-        reply: "ठीक है। अब बैंक क्लेम तैयार करते हैं।",
+        reply: {
+          hi: "ठीक है। अब बैंक क्लेम तैयार करते हैं।",
+          en: "Alright. Now let us prepare the bank claim.",
+        },
       },
       onDecline: {
         state: "blocked",
         opens: "name-correction",
-        reply: "समझ गया। नाम मेल नहीं खाता, इसलिए पहले सुधार पत्र बनाना होगा।",
-        note: "Form 4: Shyam Sunder · बैंक: Shyam Sundar",
+        reply: {
+          hi: "समझ गया। नाम मेल नहीं खाता, इसलिए पहले सुधार पत्र बनाना होगा।",
+          en: "Understood. The names do not match, so a correction letter has to be made first.",
+        },
+        note: {
+          hi: "Form 4: Shyam Sunder · बैंक: Shyam Sundar",
+          en: "Form 4: Shyam Sunder · Bank: Shyam Sundar",
+        },
       },
     },
     {
       id: "name-correction",
       type: "document-correction",
-      title: "नाम सुधार घोषणा",
-      detail: "एक सुधार घोषणा बनाइए जिसमें दोनों वर्तनी एक ही व्यक्ति की बताई गई हों।",
-      ask: "मैंने सुधार घोषणा का मसौदा तैयार कर दिया है। क्या इसे केस में जोड़ दूँ?",
+      title: { hi: "नाम सुधार घोषणा", en: "Name correction declaration" },
+      detail: {
+        hi: "एक सुधार घोषणा बनाइए जिसमें दोनों वर्तनी एक ही व्यक्ति की बताई गई हों।",
+        en: "Prepare a correction declaration stating that both spellings belong to the same person.",
+      },
+      ask: {
+        hi: "मैंने सुधार घोषणा का मसौदा तैयार कर दिया है। क्या इसे केस में जोड़ दूँ?",
+        en: "I have drafted the correction declaration. Shall I add it to your case?",
+      },
       onConfirm: {
         state: "done",
         opens: "bank-claim",
         resolves: "name-check",
-        reply: "सुधार घोषणा केस में जुड़ गई। अब बैंक क्लेम तैयार करते हैं।",
+        reply: {
+          hi: "सुधार घोषणा केस में जुड़ गई। अब बैंक क्लेम तैयार करते हैं।",
+          en: "The correction declaration is in your case. Now let us prepare the bank claim.",
+        },
         artifact: "correction-declaration",
       },
     },
     {
       id: "bank-claim",
       type: "desk-verification",
-      title: "बैंक क्लेम जमा करें",
-      detail: "बैंक शाखा में क्लेम फ़ॉर्म और सुधार घोषणा जमा कीजिए।",
-      ask: "क्या आपने बैंक शाखा में क्लेम जमा कर दिया है?",
+      title: { hi: "बैंक क्लेम जमा करें", en: "Submit the bank claim" },
+      detail: {
+        hi: "बैंक शाखा में क्लेम फ़ॉर्म और सुधार घोषणा जमा कीजिए।",
+        en: "Submit the claim form and the correction declaration at the bank branch.",
+      },
+      ask: {
+        hi: "क्या आपने बैंक शाखा में क्लेम जमा कर दिया है?",
+        en: "Have you submitted the claim at the bank branch?",
+      },
       visit: {
-        office: "भारतीय स्टेट बैंक — मुख्य शाखा (नमूना)",
-        why: "मृत्यु दावे पर मूल हस्ताक्षर शाखा में ही लिए जाते हैं।",
-        carry: ["Form 4 की प्रति", "नाम सुधार घोषणा", "अपना पहचान पत्र", "पासबुक"],
-        script: "मुझे खाताधारक की मृत्यु के बाद दावा जमा करना है। कृपया पावती दीजिए।",
-        expect: "लगभग 40 मिनट",
-        collect: "पावती रसीद और उस पर दर्ज संदर्भ संख्या",
+        office: {
+          hi: "भारतीय स्टेट बैंक — मुख्य शाखा (नमूना)",
+          en: "State Bank of India — Main Branch (simulated)",
+        },
+        why: {
+          hi: "मृत्यु दावे पर मूल हस्ताक्षर शाखा में ही लिए जाते हैं।",
+          en: "A death claim needs original signatures, and those are taken only at the branch.",
+        },
+        carry: [
+          { hi: "Form 4 की प्रति", en: "A copy of Form 4" },
+          { hi: "नाम सुधार घोषणा", en: "The name correction declaration" },
+          { hi: "अपना पहचान पत्र", en: "Your own ID proof" },
+          { hi: "पासबुक", en: "The passbook" },
+        ],
+        script: {
+          hi: "मुझे खाताधारक की मृत्यु के बाद दावा जमा करना है। कृपया पावती दीजिए।",
+          en: "I need to submit a claim after the account holder's death. Please give me an acknowledgement.",
+        },
+        expect: { hi: "लगभग 40 मिनट", en: "About 40 minutes" },
+        collect: {
+          hi: "पावती रसीद और उस पर दर्ज संदर्भ संख्या",
+          en: "The acknowledgement slip and the reference number written on it",
+        },
       },
       onConfirm: {
         state: "verifying",
-        reply: "क्लेम जमा हो गया। बैंक की जाँच शुरू है — मैं नज़र रखता हूँ।",
+        reply: {
+          hi: "क्लेम जमा हो गया। बैंक की जाँच शुरू है — मैं नज़र रखता हूँ।",
+          en: "The claim is submitted. The bank's check has started — I am keeping watch.",
+        },
       },
       verify: {
         slaDays: 2,
         outcome: {
           state: "blocked",
           opens: "bank-claim-fix",
-          reply: "बैंक ने दावा लौटा दिया है। कारण: हस्ताक्षर मेल नहीं खाया।",
-          note: "अस्वीकृति (नमूना): हस्ताक्षर मेल नहीं खाया",
+          reply: {
+            hi: "बैंक ने दावा लौटा दिया है। कारण: हस्ताक्षर मेल नहीं खाया।",
+            en: "The bank has returned the claim. Reason given: the signature did not match.",
+          },
+          note: {
+            hi: "अस्वीकृति (नमूना): हस्ताक्षर मेल नहीं खाया",
+            en: "Rejection (simulated): the signature did not match",
+          },
         },
       },
     },
     {
       id: "bank-claim-fix",
       type: "document-correction",
-      title: "अस्वीकृति ठीक करें",
-      detail: "बैंक को संबोधित एक पत्र बनाइए जिसमें हस्ताक्षर अंतर की पुष्टि हो।",
-      ask: "मैंने बैंक के लिए पत्र तैयार कर दिया है। क्या इसे जोड़कर आगे बढ़ें?",
+      title: { hi: "अस्वीकृति ठीक करें", en: "Fix the rejection" },
+      detail: {
+        hi: "बैंक को संबोधित एक पत्र बनाइए जिसमें हस्ताक्षर अंतर की पुष्टि हो।",
+        en: "Prepare a letter to the bank confirming the difference in the signature.",
+      },
+      ask: {
+        hi: "मैंने बैंक के लिए पत्र तैयार कर दिया है। क्या इसे जोड़कर आगे बढ़ें?",
+        en: "I have prepared the letter for the bank. Shall I add it and move on?",
+      },
       onConfirm: {
         state: "done",
         opens: "epfo-claim",
         resolves: "bank-claim",
-        reply: "पत्र जुड़ गया। अब EPFO नॉमिनी दावा आगे बढ़ाते हैं।",
+        reply: {
+          hi: "पत्र जुड़ गया। अब EPFO नॉमिनी दावा आगे बढ़ाते हैं।",
+          en: "The letter is added. Now let us move the EPFO nominee claim forward.",
+        },
         artifact: "bank-letter",
       },
     },
     {
       id: "epfo-claim",
       type: "desk-verification",
-      title: "EPFO नॉमिनी दावा",
-      detail: "EPFO कार्यालय में नॉमिनी दावा दर्ज कीजिए।",
-      ask: "क्या EPFO नॉमिनी दावा दर्ज हो गया है?",
+      title: { hi: "EPFO नॉमिनी दावा", en: "EPFO nominee claim" },
+      detail: {
+        hi: "EPFO कार्यालय में नॉमिनी दावा दर्ज कीजिए।",
+        en: "File the nominee claim at the EPFO office.",
+      },
+      ask: {
+        hi: "क्या EPFO नॉमिनी दावा दर्ज हो गया है?",
+        en: "Has the EPFO nominee claim been filed?",
+      },
       onConfirm: {
         state: "verifying",
-        reply: "दावा दर्ज हो गया। तय समय-सीमा पर मैं नज़र रखता हूँ।",
+        reply: {
+          hi: "दावा दर्ज हो गया। तय समय-सीमा पर मैं नज़र रखता हूँ।",
+          en: "The claim is filed. I am keeping watch on the stated time limit.",
+        },
       },
       verify: {
         slaDays: 3,
         outcome: {
           state: "blocked",
           opens: "rti-draft",
-          reply: "तय समय-सीमा निकल गई और कोई जवाब नहीं आया। अब escalation का हक़ बनता है।",
-          note: "समय-सीमा पार (नमूना): 3 दिन",
+          reply: {
+            hi: "तय समय-सीमा निकल गई और कोई जवाब नहीं आया। अब escalation का हक़ बनता है।",
+            en: "The time limit has passed and no reply came. You now have the right to escalate.",
+          },
+          note: threeDayBreachNote,
         },
       },
     },
     {
       id: "rti-draft",
       type: "rti-escalate",
-      title: "RTI मसौदा तैयार करें",
-      detail: "देरी के लिए एक सामान्य RTI आवेदन। यह सामान्य विलंब है, इसलिए 48-घंटे वाला जीवन-स्वतंत्रता प्रावधान लागू नहीं है।",
-      ask: "मैंने RTI का मसौदा तैयार किया है। क्या इसे केस में क़तार में रख दूँ?",
+      title: { hi: "RTI मसौदा तैयार करें", en: "Prepare the RTI draft" },
+      detail: {
+        hi: "देरी के लिए एक सामान्य RTI आवेदन। यह सामान्य विलंब है, इसलिए 48-घंटे वाला जीवन-स्वतंत्रता प्रावधान लागू नहीं है।",
+        en: "An ordinary RTI application about the delay. This is ordinary delay, so the 48-hour life-and-liberty provision does not apply here.",
+      },
+      ask: {
+        hi: "मैंने RTI का मसौदा तैयार किया है। क्या इसे केस में क़तार में रख दूँ?",
+        en: "I have drafted the RTI. Shall I queue it in your case?",
+      },
       onConfirm: {
         state: "done",
         opens: "case-done",
         resolves: "epfo-claim",
-        reply: "RTI मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
+        reply: {
+          hi: "RTI मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
+          en: "The RTI draft is queued. Your approval will be taken before anything is sent.",
+        },
         artifact: "rti-draft",
       },
     },
-    {
-      id: "case-done",
-      type: "case-complete",
-      title: "केस सार तैयार",
-      detail: "आपका Case Card बन गया है। इसे प्रिंट या साझा कर सकते हैं।",
-      ask: "क्या मैं आपका Case Card तैयार कर दूँ?",
-      onConfirm: {
-        state: "done",
-        reply: "Case Card तैयार है। ऊपर से खोलकर प्रिंट कर सकते हैं।",
-      },
-    },
+    caseDoneNode,
   ],
 };
 
 const scholarship: WorkflowDefinition = {
   id: "scholarship",
-  title: "अटकी हुई छात्रवृत्ति",
-  subtitle: "Stuck NSP scholarship",
+  title: { hi: "अटकी हुई छात्रवृत्ति", en: "Stuck scholarship" },
+  subtitle: { hi: "Stuck NSP scholarship", en: "An NSP payment that never arrived" },
   firstNodeId: "nsp-status",
   nodes: [
     {
       id: "nsp-status",
       type: "document-explain",
-      title: "NSP स्थिति समझें",
-      detail: "पोर्टल पर 'Released to PFMS' दिखता है, पर खाते में पैसा नहीं आया। इसका मतलब भुगतान बैंक स्तर पर अटका है।",
-      ask: "आपकी स्थिति 'Released to PFMS' दिख रही है पर पैसा नहीं आया। क्या मैं कारण ढूँढूँ?",
+      title: { hi: "NSP स्थिति समझें", en: "Understand the NSP status" },
+      detail: {
+        hi: "पोर्टल पर 'Released to PFMS' दिखता है, पर खाते में पैसा नहीं आया। इसका मतलब भुगतान बैंक स्तर पर अटका है।",
+        en: "The portal shows 'Released to PFMS', but no money reached the account. That means the payment is stuck at the bank end.",
+      },
+      ask: {
+        hi: "आपकी स्थिति 'Released to PFMS' दिख रही है पर पैसा नहीं आया। क्या मैं कारण ढूँढूँ?",
+        en: "Your status shows 'Released to PFMS' but the money has not arrived. Shall I find the reason?",
+      },
       onConfirm: {
         state: "done",
         opens: "pfms-trace",
-        reply: "ठीक है। PFMS की तरफ़ से भुगतान की स्थिति देखते हैं।",
+        reply: {
+          hi: "ठीक है। PFMS की तरफ़ से भुगतान की स्थिति देखते हैं।",
+          en: "Alright. Let us look at the payment status from the PFMS side.",
+        },
       },
     },
     {
       id: "pfms-trace",
       type: "desk-verification",
-      title: "PFMS भुगतान जाँच",
-      detail: "PFMS से भुगतान की वापसी का कारण मँगाया जाता है।",
-      ask: "क्या मैं PFMS भुगतान जाँच शुरू कर दूँ?",
+      title: { hi: "PFMS भुगतान जाँच", en: "PFMS payment check" },
+      detail: {
+        hi: "PFMS से भुगतान की वापसी का कारण मँगाया जाता है।",
+        en: "The reason the payment came back is requested from PFMS.",
+      },
+      ask: {
+        hi: "क्या मैं PFMS भुगतान जाँच शुरू कर दूँ?",
+        en: "Shall I start the PFMS payment check?",
+      },
       onConfirm: {
         state: "verifying",
-        reply: "जाँच शुरू है। कारण मिलते ही बताता हूँ।",
+        reply: {
+          hi: "जाँच शुरू है। कारण मिलते ही बताता हूँ।",
+          en: "The check has started. I will tell you as soon as the reason comes in.",
+        },
       },
       verify: {
         slaDays: 1,
         outcome: {
           state: "blocked",
           opens: "bank-seeding",
-          reply: "कारण मिल गया: बैंक ने भुगतान लौटा दिया — खाता आधार से नहीं जुड़ा (NPCI)।",
-          note: "छिपा कारण (नमूना): NPCI mapping न होना",
+          reply: {
+            hi: "कारण मिल गया: बैंक ने भुगतान लौटा दिया — खाता आधार से नहीं जुड़ा (NPCI)।",
+            en: "Found the reason: the bank returned the payment — the account is not linked to Aadhaar (NPCI).",
+          },
+          note: {
+            hi: "छिपा कारण (नमूना): NPCI mapping न होना",
+            en: "Hidden reason (simulated): NPCI mapping missing",
+          },
         },
       },
     },
     {
       id: "bank-seeding",
       type: "bank-seeding-fix",
-      title: "बैंक खाता सीडिंग ठीक करें",
-      detail: "शाखा में जाकर खाता आधार से जुड़वाइए और NPCI mapping सक्रिय कराइए।",
-      ask: "क्या आपने शाखा में खाता सीडिंग का अनुरोध दे दिया है?",
+      title: { hi: "बैंक खाता सीडिंग ठीक करें", en: "Fix the bank account seeding" },
+      detail: {
+        hi: "शाखा में जाकर खाता आधार से जुड़वाइए और NPCI mapping सक्रिय कराइए।",
+        en: "Go to the branch, get the account linked to Aadhaar, and get NPCI mapping activated.",
+      },
+      ask: {
+        hi: "क्या आपने शाखा में खाता सीडिंग का अनुरोध दे दिया है?",
+        en: "Have you given the account seeding request at the branch?",
+      },
       visit: {
-        office: "आपकी बैंक शाखा (नमूना)",
-        why: "NPCI mapping शाखा से ही सक्रिय होती है, पोर्टल से नहीं।",
-        carry: ["पासबुक", "आधार की प्रति", "छात्रवृत्ति आवेदन संख्या"],
-        script: "मेरा खाता आधार से जोड़कर NPCI mapping सक्रिय कीजिए। कृपया पावती दीजिए।",
-        expect: "लगभग 30 मिनट",
-        collect: "सीडिंग अनुरोध की पावती",
+        office: { hi: "आपकी बैंक शाखा (नमूना)", en: "Your bank branch (simulated)" },
+        why: {
+          hi: "NPCI mapping शाखा से ही सक्रिय होती है, पोर्टल से नहीं।",
+          en: "NPCI mapping is activated only at the branch, not on the portal.",
+        },
+        carry: [
+          { hi: "पासबुक", en: "The passbook" },
+          { hi: "आधार की प्रति", en: "A copy of your Aadhaar" },
+          { hi: "छात्रवृत्ति आवेदन संख्या", en: "The scholarship application number" },
+        ],
+        script: {
+          hi: "मेरा खाता आधार से जोड़कर NPCI mapping सक्रिय कीजिए। कृपया पावती दीजिए।",
+          en: "Please link my account to Aadhaar and activate NPCI mapping. Please give me an acknowledgement.",
+        },
+        expect: { hi: "लगभग 30 मिनट", en: "About 30 minutes" },
+        collect: {
+          hi: "सीडिंग अनुरोध की पावती",
+          en: "The acknowledgement for the seeding request",
+        },
       },
       onConfirm: {
         state: "done",
         opens: "verify-again",
         resolves: "pfms-trace",
-        reply: "सीडिंग अनुरोध दर्ज हो गया। अब दोबारा भुगतान जाँच लगाते हैं।",
+        reply: {
+          hi: "सीडिंग अनुरोध दर्ज हो गया। अब दोबारा भुगतान जाँच लगाते हैं।",
+          en: "The seeding request is recorded. Now let us run the payment check again.",
+        },
         artifact: "npci-checklist",
       },
     },
     {
       id: "verify-again",
       type: "desk-verification",
-      title: "दोबारा भुगतान जाँच",
-      detail: "सीडिंग ठीक होने के बाद भुगतान दोबारा जाँचा जाता है।",
-      ask: "क्या मैं दोबारा भुगतान जाँच लगा दूँ?",
+      title: { hi: "दोबारा भुगतान जाँच", en: "Payment check again" },
+      detail: {
+        hi: "सीडिंग ठीक होने के बाद भुगतान दोबारा जाँचा जाता है।",
+        en: "Once the seeding is fixed, the payment is checked again.",
+      },
+      ask: {
+        hi: "क्या मैं दोबारा भुगतान जाँच लगा दूँ?",
+        en: "Shall I run the payment check again?",
+      },
       onConfirm: {
         state: "verifying",
-        reply: "दोबारा जाँच लगी है। समय-सीमा पर नज़र है।",
+        reply: {
+          hi: "दोबारा जाँच लगी है। समय-सीमा पर नज़र है।",
+          en: "The check is running again. I am watching the time limit.",
+        },
       },
       verify: {
         slaDays: 3,
         outcome: {
           state: "blocked",
           opens: "grievance",
-          reply: "तय समय-सीमा निकल गई। अब NSP शिकायत दर्ज करने का हक़ बनता है।",
-          note: "समय-सीमा पार (नमूना): 3 दिन",
+          reply: {
+            hi: "तय समय-सीमा निकल गई। अब NSP शिकायत दर्ज करने का हक़ बनता है।",
+            en: "The time limit has passed. You now have the right to file an NSP grievance.",
+          },
+          note: threeDayBreachNote,
         },
       },
     },
     {
       id: "grievance",
       type: "grievance-file",
-      title: "NSP शिकायत दर्ज करें",
-      detail: "पोर्टल पर शिकायत का मसौदा, जिसमें सीडिंग पावती संदर्भ जुड़ा है।",
-      ask: "मैंने शिकायत का मसौदा तैयार किया है। क्या इसे क़तार में रख दूँ?",
+      title: { hi: "NSP शिकायत दर्ज करें", en: "File the NSP grievance" },
+      detail: {
+        hi: "पोर्टल पर शिकायत का मसौदा, जिसमें सीडिंग पावती संदर्भ जुड़ा है।",
+        en: "A grievance draft for the portal, with the seeding acknowledgement reference attached.",
+      },
+      ask: {
+        hi: "मैंने शिकायत का मसौदा तैयार किया है। क्या इसे क़तार में रख दूँ?",
+        en: "I have drafted the grievance. Shall I queue it?",
+      },
       onConfirm: {
         state: "done",
         opens: "credit",
         resolves: "verify-again",
-        reply: "शिकायत मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
+        reply: {
+          hi: "शिकायत मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
+          en: "The grievance draft is queued. Your approval will be taken before it is sent.",
+        },
         artifact: "escalation-draft",
       },
     },
     {
       id: "credit",
       type: "benefit-credit",
-      title: "राशि खाते में",
-      detail: "सुधार के बाद छात्रवृत्ति राशि खाते में जमा हो जाती है (नमूना)।",
-      ask: "क्या खाते में राशि जमा होने की पुष्टि दर्ज कर दूँ?",
+      title: { hi: "राशि खाते में", en: "Money in the account" },
+      detail: {
+        hi: "सुधार के बाद छात्रवृत्ति राशि खाते में जमा हो जाती है (नमूना)।",
+        en: "After the fix, the scholarship amount is credited to the account (simulated).",
+      },
+      ask: {
+        hi: "क्या खाते में राशि जमा होने की पुष्टि दर्ज कर दूँ?",
+        en: "Shall I record that the money has been credited?",
+      },
       onConfirm: {
         state: "done",
         opens: "case-done",
-        reply: "राशि जमा दर्ज हो गई (नमूना)।",
+        reply: {
+          hi: "राशि जमा दर्ज हो गई (नमूना)।",
+          en: "The credit is recorded (simulated).",
+        },
       },
     },
-    {
-      id: "case-done",
-      type: "case-complete",
-      title: "केस सार तैयार",
-      detail: "आपका Case Card बन गया है। इसे प्रिंट या साझा कर सकते हैं।",
-      ask: "क्या मैं आपका Case Card तैयार कर दूँ?",
-      onConfirm: {
-        state: "done",
-        reply: "Case Card तैयार है। ऊपर से खोलकर प्रिंट कर सकते हैं।",
-      },
-    },
+    caseDoneNode,
   ],
 };
 
@@ -385,7 +565,7 @@ function blockingOutcome(node: WorkflowNode): Outcome | undefined {
  * rather than from the snapshot, so no note can be supplied by a client.
  * A node that was blocked and then recovered keeps its note as evidence.
  */
-export function nodeNote(caseSnapshot: CaseSnapshot, nodeId: string): string | undefined {
+export function nodeNote(caseSnapshot: CaseSnapshot, nodeId: string): Localized | undefined {
   const entry = caseSnapshot.nodes.find((node) => node.id === nodeId);
   const definition = findNode(caseSnapshot.workflowId, nodeId);
   const blocking = definition && blockingOutcome(definition);
@@ -448,7 +628,27 @@ function applyOutcome(
   };
 }
 
-export type EngineResult = { caseSnapshot: CaseSnapshot; reply: string };
+/** Replies the engine itself produces, outside any node's content. */
+const engineReplies = {
+  waiting: {
+    hi: "अभी जाँच चल रही है। जवाब आते ही मैं बताऊँगा।",
+    en: "A check is still running. I will tell you as soon as there is a reply.",
+  },
+  allDone: {
+    hi: "इस केस के सारे कदम पूरे हो चुके हैं। आपका Case Card तैयार है।",
+    en: "Every step in this case is done. Your Case Card is ready.",
+  },
+  noReplyYet: {
+    hi: "अभी तक कोई जवाब नहीं आया। मैं नज़र रखे हुए हूँ।",
+    en: "No reply has come yet. I am keeping watch.",
+  },
+  nothingPending: {
+    hi: "समय आगे बढ़ा। अभी कोई जाँच लंबित नहीं है।",
+    en: "Time moved forward. No check is pending right now.",
+  },
+} satisfies Record<string, Localized>;
+
+export type EngineResult = { caseSnapshot: CaseSnapshot; reply: Localized };
 
 /**
  * Resolves a citizen reply against the current node. This is the only authority
@@ -470,9 +670,7 @@ export function applyIntent(caseSnapshot: CaseSnapshot, intent: Intent): EngineR
     const waiting = caseSnapshot.nodes.some((entry) => entry.state === "verifying");
     return {
       caseSnapshot,
-      reply: waiting
-        ? "अभी जाँच चल रही है। जवाब आते ही मैं बताऊँगा।"
-        : "इस केस के सारे कदम पूरे हो चुके हैं। आपका Case Card तैयार है।",
+      reply: waiting ? engineReplies.waiting : engineReplies.allDone,
     };
   }
 
@@ -507,9 +705,7 @@ export function advanceDay(caseSnapshot: CaseSnapshot): EngineResult {
   if (!verifying || !definition?.verify || elapsed < definition.verify.slaDays) {
     return {
       caseSnapshot: { ...caseSnapshot, day },
-      reply: verifying
-        ? "अभी तक कोई जवाब नहीं आया। मैं नज़र रखे हुए हूँ।"
-        : "समय आगे बढ़ा। अभी कोई जाँच लंबित नहीं है।",
+      reply: verifying ? engineReplies.noReplyYet : engineReplies.nothingPending,
     };
   }
 

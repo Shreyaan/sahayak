@@ -198,4 +198,65 @@ describe("POST /api/chat", () => {
     expect(body.caseSnapshot).toEqual(bereavement);
     expect(body.reply).not.toContain("स्वीकृत");
   });
+
+  test("answers in the requested language", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+
+    const hindi = await (await POST(
+      chatRequest({ message: "हाँ", locale: "hi", caseSnapshot: bereavement }),
+    )).json();
+    const english = await (await POST(
+      chatRequest({ message: "yes", locale: "en", caseSnapshot: bereavement }),
+    )).json();
+
+    expect(hindi.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
+    expect(typeof english.reply).toBe("string");
+    expect(english.reply).not.toBe(hindi.reply);
+    expect(/[\u0900-\u097F]/.test(english.reply)).toBe(false);
+    // The same deterministic transition happens either way.
+    expect(english.caseSnapshot).toEqual(hindi.caseSnapshot);
+  });
+
+  test("tells the clerk which language the citizen is speaking", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    let instructions = "";
+    let prompt = "";
+    mock.module("@openrouter/ai-sdk-provider", () => ({
+      createOpenRouter: () => () => ({ modelId: "test-model" }),
+    }));
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        private settings: any;
+
+        constructor(settings: any) {
+          this.settings = settings;
+          instructions = settings.instructions;
+        }
+
+        async generate(options: { prompt: string }) {
+          prompt = options.prompt;
+          await this.settings.tools.reportIntent.execute({ intent: "affirmative" });
+          return { text: "ignored" };
+        }
+      },
+    }));
+
+    await POST(
+      chatRequest({ message: "that is quite alright", locale: "en", caseSnapshot: bereavement }),
+    );
+
+    expect(instructions).toContain("English");
+    // The question it is asked to interpret is in the citizen's language.
+    expect(/[\u0900-\u097F]/.test(prompt)).toBe(false);
+  });
+
+  test("rejects an unsupported locale", async () => {
+    const response = await POST(
+      chatRequest({ message: "हाँ", locale: "fr", caseSnapshot: bereavement }),
+    );
+
+    expect(response.status).toBe(400);
+  });
 });
