@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788520802583,
+      "tag": "0000_breezy_thena",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788521057640,
+      "tag": "0001_furry_vivisector",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788522353986,
+      "tag": "0002_demonic_secret_warriors",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788523446015,
+      "tag": "0003_rainy_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788526160543,
+      "tag": "0004_furry_black_bird",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788526581897,
+      "tag": "0005_solid_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788528082521,
+      "tag": "0006_numerous_power_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788548230884,
+      "tag": "0007_motionless_hellion",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788605001073,
+      "tag": "0008_calm_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788608705710,
+      "tag": "0009_flimsy_colleen_wing",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788635415204,
+      "tag": "0010_great_hellcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788636954431,
+      "tag": "0011_illegal_mindworm",
+      "breakpoints": true
+    }
+  ]
+}

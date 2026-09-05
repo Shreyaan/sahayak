@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { caseDoneNode, type StepType, type WorkflowDefinition, type WorkflowNode } from "./workflow";
 import type { Localized } from "./locale";
+import { isSafePublicUrl } from "./public-url";
+
+export { isSafePublicUrl } from "./public-url";
 
 /**
  * Compiles what a user wrote into a journey the engine can run. Steps become a
@@ -22,32 +25,6 @@ export type WorkflowStepSpec = {
  * untrusted input: public HTTPS only — no localhost, private ranges, or
  * credentials in the URL.
  */
-export function isSafePublicUrl(value: string): boolean {
-  let url: URL;
-
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-
-  if (url.protocol !== "https:" || url.username || url.password) return false;
-
-  const host = url.hostname.toLowerCase();
-  const parts = host.split(".").map(Number);
-  const isV4 = parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
-  const isPrivateV4 = isV4 && (
-    parts[0] === 0 || parts[0] === 10 || parts[0] === 127
-    || (parts[0] === 169 && parts[1] === 254)
-    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-    || (parts[0] === 192 && parts[1] === 168)
-  );
-  const isLocal = host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")
-    || host === "host.docker.internal" || /^\d+$/.test(host);
-
-  return !isPrivateV4 && !isLocal && host.includes(".");
-}
-
 /** Shared shape for every entry path: the web form and the MCP tool. */
 export type WorkflowSpec = z.infer<typeof workflowSpecShape>;
 

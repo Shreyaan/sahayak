@@ -38,18 +38,8 @@ async function call(name, args) {
   return payload.result;
 }
 
-const list = await call("list_workflows", {});
-console.log("list_workflows  →", list.structuredContent.workflows.map((w) => w.id).join(", "));
+const search = await call("search_workflows", { query: "scholarship released but payment missing", locale: "en" });
+console.log("search_workflows →", search.structuredContent.results.map((w) => w.workflowVersionId).join(", "));
 
-const one = await call("get_workflow", { id: "scholarship" });
+const one = await call("get_workflow", { workflowVersionId: "scholarship-v1" });
 console.log("get_workflow    →", one.structuredContent.steps.length, "steps; first:", JSON.stringify(one.structuredContent.steps[0].title));
-
-const proposed = await call("propose_workflow", {
-  title: "Smoke-test journey",
-  steps: [
-    { title: "Check the portal", kind: "website", url: "https://example.com" },
-    { title: "Wait for the desk", kind: "desk" },
-  ],
-});
-console.log("propose_workflow→", proposed.structuredContent.workflowId, "| saved:", proposed.structuredContent.saved);
-console.log("previewUrl      →", proposed.structuredContent.previewUrl);

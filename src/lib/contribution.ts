@@ -1,6 +1,9 @@
-import { recordCorroboration } from "./corroboration";
 import { t, type Locale, type Localized } from "./locale";
-import { workflows, type StepType, type WorkflowId } from "./workflow";
+import { assignWorkflowId, type WorkflowStepSpec } from "./custom-workflow";
+import { jurisdictionSuggestionSchema } from "./india-locations";
+import { localizedSchema } from "./review-case";
+import { workflows, caseDoneNode, workflowDefinitionSchema, type StepType, type WorkflowDefinition, type WorkflowId } from "./workflow";
+import { z } from "zod";
 
 export type ContributionConflict = {
   field: Localized;
@@ -9,24 +12,32 @@ export type ContributionConflict = {
   reason: Localized;
 };
 
-/**
- * A contribution never becomes authoritative here. It reaches `publishable
- * draft` only once corroborated and free of unresolved conflicts, and even then
- * publication is simulated.
- */
-export type ContributionStatus = "draft" | "needs review" | "publishable draft";
-
 export type ContributionDraft = {
-  workflowId: WorkflowId;
+  workflowId: string;
+  definition: WorkflowDefinition;
   title: Localized;
+  summary: Localized;
   steps: Localized[];
   matches: Localized[];
   additions: Localized[];
   conflicts: ContributionConflict[];
   sourceType: "lived experience";
-  corroborationCount: number;
-  status: ContributionStatus;
 };
+
+export const generatedContributionSchema = z.object({
+  title: localizedSchema,
+  summary: localizedSchema,
+  steps: z.array(z.object({
+    title: localizedSchema,
+    detail: localizedSchema,
+    ask: localizedSchema,
+    kind: z.enum(["confirm", "visit", "desk"]),
+  }).strict()).min(1).max(12),
+  reviewFlags: z.array(localizedSchema).max(12),
+  jurisdiction: jurisdictionSuggestionSchema,
+}).strict();
+
+export type GeneratedContribution = z.infer<typeof generatedContributionSchema>;
 
 /** A value that reads the same in every language, such as a name on a form. */
 function same(value: string): Localized {
@@ -41,24 +52,27 @@ function localized(build: (locale: Locale) => string): Localized {
 /** Sentence templates the compiler fills with localized workflow content. */
 const phrases: Record<Locale, {
   title: (journey: string) => string;
+  summary: (journey: string) => string;
   match: (step: string, journey: string) => string;
   step: (title: string, detail: string) => string;
 }> = {
   hi: {
     title: (journey) => `${journey} — योगदान`,
+    summary: (journey) => `${journey} के अनुभव से बना समीक्षा मसौदा।`,
     match: (step, journey) => `“${step}” पहले से “${journey}” यात्रा में शामिल है।`,
     step: (title, detail) => `${title} — ${detail}`,
   },
   en: {
     title: (journey) => `${journey} contribution`,
+    summary: (journey) => `A review draft based on a lived ${journey} experience.`,
     match: (step, journey) => `“${step}” is already part of the bundled ${journey} workflow.`,
     step: (title, detail) => `${title} — ${detail}`,
   },
 };
 
 const journeySignals: Record<WorkflowId, RegExp> = {
-  scholarship: /scholarship|nsp|pfms|npci|seeding|छात्रवृत्ति|वजीफ़ा/i,
-  bereavement: /form\s*4|death|died|bereave|nominee|epfo|मृत्यु|निधन/i,
+  scholarship: /\b(?:scholarship|nsp|pfms|npci|seeding)\b|छात्रवृत्ति|वजीफ़ा/i,
+  bereavement: /\b(?:form\s*4|death|died|bereave(?:ment)?|nominee|epfo)\b|मृत्यु|निधन/i,
 };
 
 /** Signals shared by both journeys, matching the reusable step types. */
@@ -106,8 +120,9 @@ const additionSignals: Array<{ signal: RegExp; note: Localized }> = [
 
 const bundledName = "Shyam Sunder";
 
-function detectWorkflow(input: string): WorkflowId {
-  return journeySignals.scholarship.test(input) ? "scholarship" : "bereavement";
+function detectWorkflow(input: string): WorkflowId | undefined {
+  return (Object.entries(journeySignals) as Array<[WorkflowId, RegExp]>)
+    .find(([, signal]) => signal.test(input))?.[0];
 }
 
 function findConflicts(input: string): ContributionConflict[] {
@@ -146,18 +161,14 @@ function findConflicts(input: string): ContributionConflict[] {
   return conflicts;
 }
 
-function resolveStatus(corroborationCount: number, conflicts: number): ContributionStatus {
-  if (conflicts > 0) return "needs review";
-  return corroborationCount >= 2 ? "publishable draft" : "draft";
-}
-
 /**
  * Compiles a synthetic lived experience into a reviewable draft by comparing it
  * against the bundled workflow seeds. Deterministic: the AI may enrich wording,
- * but matches, conflicts, corroboration, and status are decided here.
+ * but matches and conflicts are decided here.
  */
 export function compileContribution(input: string): ContributionDraft {
   const workflowId = detectWorkflow(input);
+  if (!workflowId) throw new Error("UNSUPPORTED_CONTRIBUTION");
   const workflow = workflows[workflowId];
 
   const matchedNodes = workflow.nodes.filter((node) => stepSignals[node.type]?.test(input));
@@ -171,23 +182,78 @@ export function compileContribution(input: string): ContributionDraft {
 
   const conflicts = findConflicts(input);
 
-  // Contributors describing the same steps of the same journey corroborate each other.
-  const claimKey = `${workflowId}:${matchedNodes.map((node) => node.id).sort().join(",")}`;
-  const corroborationCount = recordCorroboration(claimKey);
-
-  const stepNodes = matchedNodes.length ? matchedNodes : workflow.nodes.slice(0, 2);
+  const title = localized((locale) => phrases[locale].title(t(workflow.title, locale)));
+  const summary = localized((locale) => phrases[locale].summary(t(workflow.title, locale)));
+  const definition: WorkflowDefinition = { ...structuredClone(workflow), title, subtitle: summary };
 
   return {
     workflowId,
-    title: localized((locale) => phrases[locale].title(t(workflow.title, locale))),
-    steps: stepNodes.map((node) =>
+    definition,
+    title,
+    summary,
+    steps: definition.nodes.map((node) =>
       localized((locale) => phrases[locale].step(t(node.title, locale), t(node.detail, locale))),
     ),
     matches,
     additions,
     conflicts,
     sourceType: "lived experience",
-    corroborationCount,
-    status: resolveStatus(corroborationCount, conflicts.length),
+  };
+}
+
+const stepTypeFor = (kind: GeneratedContribution["steps"][number]["kind"]): StepType => {
+  if (kind === "visit") return "office-visit";
+  if (kind === "desk") return "desk-verification";
+  return "document-explain";
+};
+
+/** Turns model-extracted evidence into the same deterministic review shape as seeded comparisons. */
+export function compileGeneratedContribution(generated: GeneratedContribution): ContributionDraft {
+  const workflowId = assignWorkflowId({
+    title: generated.title.en,
+    subtitle: generated.summary.en,
+    steps: generated.steps.map((step) => ({ title: step.title.en, detail: step.detail.en, ask: step.ask.en, kind: step.kind })),
+  }, new Set(Object.keys(workflows)));
+
+  const nodes = generated.steps.map((step, index) => ({
+    id: `step-${index + 1}`,
+    type: stepTypeFor(step.kind),
+    title: step.title,
+    detail: step.detail,
+    ask: step.ask,
+    onConfirm: {
+      state: "done" as const,
+      opens: index === generated.steps.length - 1 ? "case-done" : `step-${index + 2}`,
+      reply: {
+        hi: "यह बताया गया कदम दर्ज हो गया। अगला कदम देखें।",
+        en: "This reported step is recorded. Review the next step.",
+      },
+    },
+  }));
+
+  const definition = workflowDefinitionSchema.parse({
+    id: workflowId,
+    title: generated.title,
+    subtitle: generated.summary,
+    firstNodeId: nodes[0]!.id,
+    nodes: [...nodes, caseDoneNode],
+    authoredBy: "web-form",
+  });
+
+  const expertVerification = {
+    hi: "प्रकाशित करने से पहले पूरी यात्रा और हर सरकारी निर्देश की विशेषज्ञ जाँच आवश्यक है।",
+    en: "Expert verification of the full journey and every government instruction is required before publication.",
+  };
+
+  return {
+    workflowId,
+    definition,
+    title: generated.title,
+    summary: generated.summary,
+    steps: generated.steps.map((step) => step.title),
+    matches: [],
+    additions: [...generated.reviewFlags, expertVerification],
+    conflicts: [],
+    sourceType: "lived experience",
   };
 }

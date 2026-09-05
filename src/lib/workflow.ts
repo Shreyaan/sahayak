@@ -1,5 +1,6 @@
 import { readIntent, type Intent } from "./intent";
 import type { Localized } from "./locale";
+import { z } from "zod";
 
 /**
  * The reusable typed step library. A workflow node names one of these types and
@@ -87,6 +88,63 @@ export type WorkflowDefinition = {
 
 export type WorkflowId = "bereavement" | "scholarship";
 
+const localizedWorkflowSchema = z.object({
+  hi: z.string().trim().min(1).max(2_000),
+  en: z.string().trim().min(1).max(2_000),
+}).strict();
+
+const outcomeSchema = z.object({
+  state: z.enum(["pending", "needs-you", "verifying", "blocked", "done"]),
+  opens: z.string().trim().min(1).max(128).optional(),
+  resolves: z.string().trim().min(1).max(128).optional(),
+  reply: localizedWorkflowSchema,
+  artifact: z.enum(["correction-declaration", "bank-letter", "rti-draft", "npci-checklist", "escalation-draft"]).optional(),
+  note: localizedWorkflowSchema.optional(),
+}).strict();
+
+const workflowNodeSchema = z.object({
+  id: z.string().trim().min(1).max(128),
+  type: z.enum(["document-explain", "identity-compare", "document-correction", "office-visit", "online-action", "desk-verification", "bank-seeding-fix", "grievance-file", "rti-escalate", "benefit-credit", "case-complete"]),
+  title: localizedWorkflowSchema,
+  detail: localizedWorkflowSchema,
+  ask: localizedWorkflowSchema,
+  visit: z.object({
+    office: localizedWorkflowSchema, why: localizedWorkflowSchema, carry: z.array(localizedWorkflowSchema).max(20),
+    script: localizedWorkflowSchema, expect: localizedWorkflowSchema, collect: localizedWorkflowSchema,
+  }).strict().optional(),
+  link: z.object({ url: z.string().url(), action: localizedWorkflowSchema, collect: localizedWorkflowSchema }).strict().optional(),
+  confirmLabel: localizedWorkflowSchema.optional(),
+  declineLabel: localizedWorkflowSchema.optional(),
+  onConfirm: outcomeSchema,
+  onDecline: outcomeSchema.optional(),
+  verify: z.object({ slaDays: z.number().int().min(0).max(365), outcome: outcomeSchema }).strict().optional(),
+}).strict();
+
+/** Runtime validation for the one workflow model used by the engine and review revisions. */
+export const workflowDefinitionSchema = z.object({
+  id: z.string().trim().min(1).max(128),
+  title: localizedWorkflowSchema,
+  subtitle: localizedWorkflowSchema,
+  firstNodeId: z.string().trim().min(1).max(128),
+  nodes: z.array(workflowNodeSchema).min(1).max(20),
+  authoredBy: z.enum(["bundled", "web-form", "mcp"]).optional(),
+  authoredAt: z.string().datetime().optional(),
+}).strict().superRefine((definition, context) => {
+  const ids = new Set<string>();
+  for (const [index, node] of definition.nodes.entries()) {
+    if (ids.has(node.id)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["nodes", index, "id"], message: "Node IDs must be unique." });
+    ids.add(node.id);
+  }
+  if (!ids.has(definition.firstNodeId)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["firstNodeId"], message: "The first node must exist." });
+  for (const [index, node] of definition.nodes.entries()) {
+    for (const [field, outcome] of [["onConfirm", node.onConfirm], ["onDecline", node.onDecline], ["verify", node.verify?.outcome]] as const) {
+      for (const target of [outcome?.opens, outcome?.resolves]) {
+        if (target && !ids.has(target)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["nodes", index, field], message: "Outcome targets must exist." });
+      }
+    }
+  }
+});
+
 export type CaseNode = {
   id: string;
   state: NodeState;
@@ -96,6 +154,7 @@ export type CaseNode = {
 
 export type CaseSnapshot = {
   workflowId: string;
+  workflowVersionId: string;
   nodes: CaseNode[];
   artifacts: ArtifactId[];
   /** Simulated days elapsed. Demo time maps one simulated day to ten seconds. */
@@ -557,12 +616,17 @@ export const workflowIds = Object.keys(workflows) as WorkflowId[];
  */
 const registry = new Map<string, WorkflowDefinition>(Object.entries(workflows));
 
-export function registerWorkflowDefinition(definition: WorkflowDefinition): void {
-  registry.set(definition.id, definition);
+export function registerWorkflowDefinition(definition: WorkflowDefinition, workflowVersionId?: string): void {
+  registry.set(workflowVersionId ?? definition.id, definition);
 }
 
 export function getWorkflowDefinition(id: string): WorkflowDefinition | undefined {
   return registry.get(id);
+}
+
+/** Resolves the immutable definition a saved case was started with. */
+export function getCaseWorkflowDefinition(caseSnapshot: CaseSnapshot): WorkflowDefinition | undefined {
+  return registry.get(caseSnapshot.workflowVersionId) ?? registry.get(caseSnapshot.workflowId);
 }
 
 export function isWorkflowId(value: unknown): value is WorkflowId {
@@ -594,7 +658,7 @@ function blockingOutcome(node: WorkflowNode): Outcome | undefined {
  */
 export function nodeNote(caseSnapshot: CaseSnapshot, nodeId: string): Localized | undefined {
   const entry = caseSnapshot.nodes.find((node) => node.id === nodeId);
-  const definition = findNode(caseSnapshot.workflowId, nodeId);
+  const definition = getCaseWorkflowDefinition(caseSnapshot)?.nodes.find((node) => node.id === nodeId);
   const blocking = definition && blockingOutcome(definition);
 
   if (!entry || !blocking) return undefined;
@@ -610,12 +674,16 @@ export function isClearedBlocker(caseSnapshot: CaseSnapshot, nodeId: string): bo
   return entry?.state === "done" && nodeNote(caseSnapshot, nodeId) !== undefined;
 }
 
-export function startCase(workflowId: string): CaseSnapshot {
-  const workflow = getWorkflowDefinition(workflowId);
+export function startCase(
+  workflowId: string,
+  workflowVersionId = `${workflowId}-v1`,
+): CaseSnapshot {
+  const workflow = registry.get(workflowVersionId) ?? getWorkflowDefinition(workflowId);
   if (!workflow) throw new Error(`Unknown workflow: ${workflowId}`);
 
   return {
     workflowId,
+    workflowVersionId,
     nodes: workflow.nodes.map((node) => ({
       id: node.id,
       state: node.id === workflow.firstNodeId ? "needs-you" : "pending",
@@ -628,7 +696,7 @@ export function startCase(workflowId: string): CaseSnapshot {
 /** The node the citizen is being asked about right now. */
 export function currentNode(caseSnapshot: CaseSnapshot): WorkflowNode | undefined {
   const open = caseSnapshot.nodes.find((node) => node.state === "needs-you");
-  return open && findNode(caseSnapshot.workflowId, open.id);
+  return open && getCaseWorkflowDefinition(caseSnapshot)?.nodes.find((node) => node.id === open.id);
 }
 
 function applyOutcome(
@@ -671,8 +739,8 @@ const engineReplies = {
     en: "No reply has come yet. I am keeping watch.",
   },
   nothingPending: {
-    hi: "समय आगे बढ़ा। अभी कोई जाँच लंबित नहीं है।",
-    en: "Time moved forward. No check is pending right now.",
+    hi: "अभी कोई जाँच लंबित नहीं है, इसलिए समय नहीं बदला।",
+    en: "No check is pending, so demo time did not change.",
   },
 } satisfies Record<string, Localized>;
 
@@ -720,20 +788,25 @@ export function applyIntent(caseSnapshot: CaseSnapshot, intent: Intent): EngineR
 }
 
 /**
- * Advances simulated time by one day and releases any desk verification whose
- * clock has expired. Demo mode is deterministic: no randomness is used.
+ * Advances simulated time only while a desk verification is pending, then
+ * releases it when its clock expires. Demo mode is deterministic.
  */
 export function advanceDay(caseSnapshot: CaseSnapshot): EngineResult {
-  const day = caseSnapshot.day + 1;
   const verifying = caseSnapshot.nodes.find((node) => node.state === "verifying");
-  const definition = verifying && findNode(caseSnapshot.workflowId, verifying.id);
 
-  const elapsed = day - (verifying?.startedDay ?? 0);
+  if (!verifying) {
+    return { caseSnapshot, reply: engineReplies.nothingPending };
+  }
 
-  if (!verifying || !definition?.verify || elapsed < definition.verify.slaDays) {
+  const day = caseSnapshot.day + 1;
+  const definition = getCaseWorkflowDefinition(caseSnapshot)?.nodes.find((node) => node.id === verifying.id);
+
+  const elapsed = day - (verifying.startedDay ?? 0);
+
+  if (!definition?.verify || elapsed < definition.verify.slaDays) {
     return {
       caseSnapshot: { ...caseSnapshot, day },
-      reply: verifying ? engineReplies.noReplyYet : engineReplies.nothingPending,
+      reply: engineReplies.noReplyYet,
     };
   }
 

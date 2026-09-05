@@ -10,9 +10,14 @@ import {
   advanceDay,
   applyIntent,
   currentNode,
+  getWorkflowDefinition,
   type CaseSnapshot,
+  registerWorkflowDefinition,
 } from "@/lib/workflow";
 import { resolveWorkflow } from "@/lib/workflow-registry";
+import { existingBrowserOwnerHash } from "@/lib/browser-owner";
+import { redactCitizenText } from "@/lib/citizen-outcomes";
+import { getWorkflowVersion } from "@/lib/workflow-version";
 
 export const maxDuration = 30;
 
@@ -26,6 +31,7 @@ const PROVIDER_TIMEOUT_MS = 8_000;
  */
 const caseSnapshotSchema = z.object({
   workflowId: z.string().max(64),
+  workflowVersionId: z.string().max(128),
   nodes: z.array(
     z.object({
       id: z.string().max(60),
@@ -67,7 +73,7 @@ const intentSchema = z.object({
 /**
  * The clerk's only job: read a free-form reply the deterministic reader could
  * not classify. It returns a signal, never a decision — the engine still owns
- * every transition, and an unusable answer simply stays `unknown`.
+ * every transition, and a missing tool result is reported as a provider error.
  */
 async function readIntentWithClerk(
   apiKey: string,
@@ -75,7 +81,7 @@ async function readIntentWithClerk(
   question: string,
   locale: Locale,
 ): Promise<Intent> {
-  let observed: Intent = "unknown";
+  let observed: Intent | undefined;
 
   const openrouter = createOpenRouter({ apiKey });
   const agent = new ToolLoopAgent({
@@ -100,10 +106,11 @@ async function readIntentWithClerk(
   });
 
   await agent.generate({
-    prompt: `Question: ${question}\nCitizen reply: ${message}`,
+    prompt: `Question: ${question}\nCitizen reply: ${redactCitizenText(message)}`,
     timeout: PROVIDER_TIMEOUT_MS,
   });
 
+  if (!observed) throw new Error("AI_INVALID_RESPONSE");
   return observed;
 }
 
@@ -118,11 +125,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Message and case are required." }, { status: 400 });
   }
 
-  const { action, intent: statedIntent, message, locale, caseId, caseSnapshot } = parsed.data;
+  const { action, intent: statedIntent, message, locale, caseId, caseSnapshot: submittedSnapshot } = parsed.data;
+
+  let caseSnapshot = submittedSnapshot;
+  if (caseId) {
+    const ownerHash = existingBrowserOwnerHash(request);
+    if (!ownerHash) {
+      return NextResponse.json({ code: "CASE_ACCESS_REQUIRED", error: "This case belongs to another browser." }, { status: 401 });
+    }
+    try {
+      const stored = await store.getCase(caseId, ownerHash);
+      if (!stored) return NextResponse.json({ code: "CASE_NOT_FOUND", error: "That case was not found." }, { status: 404 });
+      caseSnapshot = stored.snapshot;
+      const version = await getWorkflowVersion(caseSnapshot.workflowVersionId);
+      if (!version || version.workflowId !== caseSnapshot.workflowId) {
+        return NextResponse.json({ code: "WORKFLOW_VERSION_NOT_FOUND", error: "This case's workflow version is unavailable." }, { status: 409 });
+      }
+      registerWorkflowDefinition(version.definition, version.id);
+    } catch {
+      return NextResponse.json({ code: "DATABASE_UNAVAILABLE", error: "The case is unavailable right now." }, { status: 503 });
+    }
+  }
 
   // The journey's definition is the authority for content; the snapshot only
   // carries ids and states. Both bundled and user-added journeys resolve here.
-  const definition = await resolveWorkflow(caseSnapshot.workflowId);
+  const definition = caseId
+    ? getWorkflowDefinition(caseSnapshot.workflowVersionId)
+    : await resolveWorkflow(caseSnapshot.workflowId);
   const seededIds = definition?.nodes.map((node) => node.id);
   if (!seededIds
     || caseSnapshot.nodes.length !== seededIds.length
@@ -135,7 +164,15 @@ export async function POST(request: Request) {
     ({ caseSnapshot: next, reply: t(reply, locale) });
 
   if (action === "advance-day") {
-    return NextResponse.json(localize(advanceDay(caseSnapshot)));
+    const result = localize(advanceDay(caseSnapshot));
+    if (caseId) {
+      try {
+        await store.saveCase(caseId, result.caseSnapshot);
+      } catch {
+        return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The case could not be saved. Please try again." }, { status: 503 });
+      }
+    }
+    return NextResponse.json(result);
   }
 
   // A labeled button states its intent outright; free text goes through the
@@ -147,11 +184,14 @@ export async function POST(request: Request) {
   if (!intent) {
     intent = readIntent(message);
 
-    if (intent === "unknown" && apiKey && node) {
+    if (intent === "unknown" && node) {
+      if (!apiKey) {
+        return NextResponse.json({ code: "AI_UNAVAILABLE", error: "Chat interpretation is unavailable right now." }, { status: 503 });
+      }
       try {
         intent = await readIntentWithClerk(apiKey, message, t(node.ask, locale), locale);
       } catch {
-        // An unreadable reply simply re-asks the question below.
+        return NextResponse.json({ code: "AI_UNAVAILABLE", error: "Chat interpretation is unavailable right now." }, { status: 503 });
       }
     }
   }
@@ -163,7 +203,7 @@ export async function POST(request: Request) {
     try {
       await store.saveCase(caseId, result.caseSnapshot);
     } catch {
-      // The chat reply stands even if persistence hiccups.
+      return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The case could not be saved. Please try again." }, { status: 503 });
     }
   }
 

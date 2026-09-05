@@ -1,9 +1,6 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { compileContribution } from "./contribution";
-import { resetCorroboration } from "./corroboration";
 import { t, type Locale, type Localized } from "./locale";
-
-beforeEach(resetCorroboration);
 
 /** Joins a localized list into one string so a test can search it. */
 function read(values: Localized[], locale: Locale): string {
@@ -18,9 +15,9 @@ describe("compileContribution", () => {
 
     expect(draft.workflowId).toBe("bereavement");
     expect(draft.sourceType).toBe("lived experience");
-    expect(draft.corroborationCount).toBe(1);
-    expect(draft.status).toBe("draft");
     expect(draft.steps.length).toBeGreaterThan(0);
+    expect(draft.summary.en).not.toBe(draft.title.en);
+    expect(draft.summary.hi).not.toBe(draft.title.hi);
   });
 
   test("writes every user-facing string in both languages", () => {
@@ -63,7 +60,6 @@ describe("compileContribution", () => {
 
     expect(draft.conflicts.map((conflict) => conflict.field.en)).toContain("RTI timeline");
     expect(draft.conflicts.map((conflict) => conflict.field.hi)).toContain("RTI समय-सीमा");
-    expect(draft.status).toBe("needs review");
   });
 
   test("reports an unofficial payment as an addition needing review, not as guidance", () => {
@@ -77,24 +73,18 @@ describe("compileContribution", () => {
     expect(read(draft.additions, "hi")).toContain("बिचौलिया");
   });
 
-  test("a second matching contribution corroborates the first and becomes publishable", () => {
+  test("repeated previews remain independent drafts", () => {
     const first = compileContribution("I used Form 4 for the bank claim after the death.");
     const second = compileContribution("Form 4 was needed for my bank claim after a death too.");
 
-    expect(first.corroborationCount).toBe(1);
-    expect(first.status).toBe("draft");
-    expect(second.corroborationCount).toBe(2);
-    expect(second.status).toBe("publishable draft");
+    expect(first).toEqual(second);
   });
 
-  test("corroboration never publishes a draft that still holds a conflict", () => {
+  test("a draft with a conflict always needs review", () => {
     const input = "Form 4 listed Shyam Sundar for the bank claim after the death.";
 
-    compileContribution(input);
-    const second = compileContribution(input);
+    const draft = compileContribution(input);
 
-    expect(second.corroborationCount).toBe(2);
-    expect(second.status).toBe("needs review");
-    expect(second.conflicts.length).toBeGreaterThan(0);
+    expect(draft.conflicts.length).toBeGreaterThan(0);
   });
 });

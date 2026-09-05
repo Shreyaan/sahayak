@@ -7,6 +7,52 @@
     "heading": "Which task is stuck?",
     "lead": "Pick a journey. We will keep every next step visible."
   },
+  "home": {
+    "eyebrow": "Government work, in one conversation",
+    "search": {
+      "eyebrow": "Find the right journey",
+      "title": "Tell us what is stuck",
+      "copy": "Use your own words. Sahayak will only suggest a published journey when the match is safe."
+    },
+    "location": {
+      "title": "Your location",
+      "help": "Optional. This keeps state and district journeys relevant to you.",
+      "state": "State or union territory",
+      "district": "District",
+      "allIndia": "All India",
+      "allDistricts": "All districts"
+    },
+    "cases": {
+      "eyebrow": "Your saved work",
+      "open": "Current and open cases",
+      "past": "Past cases",
+      "openEmpty": "No open case yet. Search or choose a published journey to begin.",
+      "pastEmpty": "Completed cases will stay here so you can return to their evidence.",
+      "current": "Next action",
+      "progress": "{completed} of {total} actions done",
+      "day": "Day {day}",
+      "resume": "Continue case"
+    },
+    "library": {
+      "eyebrow": "Workflow library",
+      "title": "Published journeys",
+      "copy": "Browse journeys that have passed Sahayak's publication boundary. Draft contributions never appear here.",
+      "count": "{count} published",
+      "loading": "Loading published journeys…",
+      "flagship": "Flagship",
+      "steps": "{count} actions",
+      "start": "Start journey",
+      "error": "The published workflow library is unavailable right now."
+    },
+    "ai": {
+      "title": "Use Sahayak with your AI",
+      "copy": "Connect ChatGPT, Claude, or another MCP client to search Sahayak's published journeys or prepare a workflow proposal in conversation.",
+      "reviewOnly": "Only published journeys can guide citizens. New proposals always go to expert review.",
+      "endpointLabel": "MCP endpoint for connector settings:",
+      "copyButton": "Copy",
+      "copied": "Copied ✓"
+    }
+  },
   "journeyStart": "Start",
   "yourCases": {
     "heading": "Continue a case",
@@ -18,6 +64,7 @@
     "day": "Day {day}",
     "demoTime": "Demo time",
     "advanceDay": "Move a day ahead",
+    "history": "Journey history",
     "waiting": "A desk is checking your case. Press “Move a day ahead” to move time forward.",
     "waitingNote": "Replies usually arrive within a few days.",
     "artifacts": "Papers created for you",
@@ -110,12 +157,15 @@
     "ai": {
       "title": "Easier with an AI clerk",
       "copy": "Skip the form. Connect ChatGPT, Claude, or any MCP client to Sahayak and just tell your story — it asks the right questions, and the journey lands here, compiled by the same engine.",
+      "reviewOnly": "MCP proposals go to expert review. They are never published automatically.",
       "endpointLabel": "MCP endpoint for the connector settings:",
       "copyButton": "Copy",
       "copied": "Copied ✓",
       "learn": "How it works →"
     },
     "copy": "Describe what happened to you, step by step. We turn it into a structured draft that others can follow, and flag anything that disagrees with the known process.",
+    "titleLabel": "Short title (optional)",
+    "titlePlaceholder": "For example: Scholarship payment not received",
     "label": "What happened?",
     "placeholder": "Describe your experience in your own words…",
     "examples": {
@@ -138,21 +188,32 @@
       "conflictsEmpty": "No conflicts found against the bundled seed."
     },
     "conflictComparison": "submitted “{submitted}”; bundled “{bundled}”.",
-    "meta": "Source: {source} · Corroboration: {count} · Matched seed: {workflow}",
     "sourceType": "lived experience",
-    "status": {
-      "draft": "draft",
-      "needsReview": "needs review",
-      "publishableDraft": "publishable draft"
-    },
-    "verdict": {
-      "held": "Held for review: a conflict with the bundled source is unresolved.",
-      "corroborated": "Corroborated by more than one contributor, so this draft may be proposed for publication.",
-      "single": "One report so far. A second matching contribution would corroborate it."
-    },
     "submit": "Submit for review",
     "submitting": "Submitting…",
     "submitted": "Submitted — saved. Reviewers can see it now.",
-    "submitError": "Could not save the submission. Please try again."
+    "submitError": "Could not save the submission. Please try again.",
+    "review": {
+      "copy": "Your description is redacted before it is saved. It creates a draft for expert review, never a public journey.",
+      "jurisdiction": "Jurisdiction",
+      "jurisdictionHelp": "Which government level and place handles this journey? Optional — leave it blank and Sahayak will suggest one for review.",
+      "suggest": "Let Sahayak suggest",
+      "central": "Central",
+      "state": "State",
+      "district": "District",
+      "stateName": "State or union territory",
+      "districtName": "District",
+      "chooseState": "Choose a state",
+      "chooseDistrict": "Choose a district",
+      "checkJurisdiction": "Check this before submitting. Reviewers can reject a wrong jurisdiction.",
+      "preview": "Preview draft",
+      "preparing": "Preparing…",
+      "previewEyebrow": "Preview before submission",
+      "unsupported": "This experience does not match a journey Sahayak can safely draft yet.",
+      "confirm": "Confirm and submit for expert review",
+      "success": "Submitted for expert review.",
+      "openReview": "Open this protected review case",
+      "signInRequired": "Expert sign-in is required."
+    }
   }
 }

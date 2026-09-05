@@ -2,6 +2,7 @@
   "caseCard": {
     "eyebrow": "Sahayak · Case Card",
     "back": "← Home",
+    "continue": "← Continue this case",
     "print": "Print",
     "unreadable": "This Case Card link is not readable. A sample case is shown below.",
     "loading": "Loading…",

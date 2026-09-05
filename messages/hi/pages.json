@@ -2,6 +2,7 @@
   "caseCard": {
     "eyebrow": "सहायक · Case Card",
     "back": "← होम",
+    "continue": "← इसी केस को जारी रखें",
     "print": "प्रिंट करें",
     "unreadable": "यह Case Card लिंक पढ़ा नहीं जा सका। नीचे एक नमूना केस दिखाया गया है।",
     "loading": "खुल रहा है…",

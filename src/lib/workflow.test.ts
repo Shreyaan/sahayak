@@ -7,16 +7,25 @@ import {
   currentNode,
   isClearedBlocker,
   nodeNote,
+  registerWorkflowDefinition,
   sharedStepTypes,
   startCase,
   workflowIds,
+  workflowDefinitionSchema,
   workflows,
   type CaseSnapshot,
+  type WorkflowDefinition,
 } from "./workflow";
 
 function stateOf(caseSnapshot: CaseSnapshot, nodeId: string) {
   return caseSnapshot.nodes.find((node) => node.id === nodeId)?.state;
 }
+
+test("rejects a workflow outcome that resolves a node outside its definition", () => {
+  const invalid = structuredClone(workflows.scholarship);
+  invalid.nodes[0]!.onConfirm.resolves = "missing-node";
+  expect(workflowDefinitionSchema.safeParse(invalid).success).toBe(false);
+});
 
 /** Walks a case forward until the named node is the current action. */
 function confirmUntil(caseSnapshot: CaseSnapshot, nodeId: string): CaseSnapshot {
@@ -93,6 +102,22 @@ describe("every user-facing string is bilingual", () => {
 });
 
 describe("workflow seeds", () => {
+  test("an older case keeps using its exact workflow version after a newer version is registered", () => {
+    const original = workflows.scholarship;
+    const versionOne = structuredClone(original) as WorkflowDefinition;
+    const versionTwo = structuredClone(original) as WorkflowDefinition;
+    versionOne.nodes[0].ask.en = "Version one question";
+    versionTwo.nodes[0].ask.en = "Version two question";
+
+    registerWorkflowDefinition(versionOne, "scholarship-v1-test");
+    const olderCase = startCase("scholarship", "scholarship-v1-test");
+    registerWorkflowDefinition(versionTwo, "scholarship-v2-test");
+    const newerCase = startCase("scholarship", "scholarship-v2-test");
+
+    expect(currentNode(olderCase)?.ask.en).toBe("Version one question");
+    expect(currentNode(newerCase)?.ask.en).toBe("Version two question");
+  });
+
   test("both journeys are powered by one engine and share step types", () => {
     expect(workflowIds).toEqual(["bereavement", "scholarship"]);
     expect(sharedStepTypes()).toEqual(
@@ -177,6 +202,15 @@ describe("applyCitizenReply", () => {
 });
 
 describe("advanceDay", () => {
+  test("does not move time when no desk verification is pending", () => {
+    const freshCase = startCase("scholarship");
+    const result = advanceDay(freshCase);
+
+    expect(result.caseSnapshot).toBe(freshCase);
+    expect(result.caseSnapshot.day).toBe(0);
+    expect(currentNode(result.caseSnapshot)?.id).toBe("nsp-status");
+  });
+
   test("holds a desk verification until its own clock expires", () => {
     const submitted = applyCitizenReply(
       confirmUntil(startCase("bereavement"), "bank-claim"),

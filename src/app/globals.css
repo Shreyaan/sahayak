@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   color-scheme: light;
   --paper: #f7f1e7;
@@ -18,7 +20,7 @@ body {
 
 button, input { font: inherit; }
 button { cursor: pointer; }
-button:focus-visible, input:focus-visible, textarea:focus-visible {
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 3px solid var(--marigold);
   outline-offset: 3px;
 }
@@ -76,6 +78,17 @@ header, .case-heading, .chat-form {
 .journey strong { font-size: 1.1rem; }
 .journey small { color: #7a827e; }
 .journey-go { margin-top: 8px; color: var(--green); font-size: .78rem; font-weight: 800; }
+.trust-disclosure {
+  margin-top: 10px;
+  color: #536059;
+  font-size: .8rem;
+}
+.trust-disclosure summary { cursor: pointer; color: var(--green); font-weight: 800; }
+.trust-disclosure dl { margin: 8px 0 0; }
+.trust-disclosure dt { margin-top: 7px; color: var(--green); font-size: .72rem; font-weight: 800; }
+.trust-disclosure dd { margin: 2px 0 0; line-height: 1.45; }
+.trust-disclosure ul { margin: 4px 0 0; padding-left: 18px; }
+.trust-warning { margin: 10px 0 0; color: #7c2b21; font-weight: 800; }
 
 /* Simulated demo time */
 .demo-clock {
@@ -91,7 +104,7 @@ header, .case-heading, .chat-form {
 .demo-clock strong, .demo-clock small { display: block; }
 .demo-clock small { margin-top: 2px; color: #7a827e; font-size: .7rem; }
 .demo-clock .secondary-action { min-height: 44px; flex: 0 0 auto; }
-.demo-clock .secondary-action:disabled { opacity: .55; cursor: wait; }
+.demo-clock .secondary-action:disabled { opacity: .55; cursor: not-allowed; }
 
 .waiting {
   display: flex;
@@ -200,6 +213,60 @@ footer { padding-top: 24px; color: #505a54; font-size: .7rem; text-align: center
 
 @media (min-width: 760px) {
   main { padding-top: 30px; }
+}
+
+/* Protected administrator and invitation surfaces. */
+.admin-shell { width: min(100%, 620px); }
+.admin-shell-wide { width: min(100%, 880px); }
+.admin-brand { display: inline-block; color: var(--ink); text-decoration: none; }
+.admin-nav { margin-bottom: 32px; }
+.auth-card, .admin-access, .admin-section, .admin-invite {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255,255,255,.7);
+  box-shadow: 0 14px 40px rgba(52,43,27,.07);
+}
+.auth-card { margin-top: 42px; padding: clamp(20px, 6vw, 36px); }
+.auth-card h1, .admin-access h1 { margin: 8px 0; font-size: clamp(2rem, 7vw, 3rem); line-height: 1.05; letter-spacing: -.04em; }
+.auth-card > p:not(.eyebrow), .admin-title-row p { color: #536059; line-height: 1.5; }
+.auth-form { display: grid; gap: 8px; margin-top: 24px; }
+.auth-form label, .admin-invite label { margin-top: 8px; font-size: .82rem; font-weight: 800; }
+.auth-form input, .admin-invite input {
+  width: 100%; min-height: 48px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--ink);
+}
+.auth-form button { min-height: 48px; margin-top: 12px; }
+.auth-alternate { margin: 20px 0 0; font-size: .85rem; }
+.auth-alternate a { color: var(--green); font-weight: 800; }
+.invite-actions { display: grid; gap: 12px; margin-top: 24px; }
+.invite-actions button { min-height: 48px; }
+.invite-success { margin-top: 24px; padding: 14px; border-radius: 12px; background: #e8f4ee; color: var(--green); font-weight: 800; }
+.admin-access { display: grid; gap: 18px; padding: clamp(18px, 5vw, 32px); }
+.admin-access + .admin-access { margin-top: 18px; }
+.admin-title-row h1 { margin-bottom: 4px; }
+.admin-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; }
+.admin-metrics div { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.admin-metrics dt { color: #69736e; font-size: .75rem; font-weight: 800; }
+.admin-metrics dd { margin: 6px 0 0; color: var(--green); font-size: 1.7rem; font-weight: 900; }
+.admin-invite { display: grid; gap: 8px; padding: 18px; box-shadow: none; }
+.admin-invite > div { display: grid; gap: 10px; }
+.admin-invite button { min-height: 48px; }
+.admin-section { padding: 18px; box-shadow: none; }
+.admin-section h2 { margin: 0 0 14px; font-size: 1.1rem; }
+.admin-empty { margin: 0; color: #69736e; }
+.access-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.access-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.access-list strong, .access-list small { display: block; overflow-wrap: anywhere; }
+.access-list small { margin-top: 4px; color: #69736e; }
+.access-list button { min-height: 44px; }
+.admin-error { margin: 8px 0 0; color: #8b2e24; font-weight: 800; }
+.admin-success { margin: 8px 0 0; color: var(--green); font-weight: 800; }
+
+@media (min-width: 620px) {
+  .admin-invite > div { grid-template-columns: 1fr auto; }
+}
+
+@media (max-width: 560px) {
+  .admin-metrics { grid-template-columns: 1fr; }
 }
 
 .case-card-link {
@@ -379,7 +446,7 @@ header { flex-wrap: wrap; row-gap: 8px; }
   font-size: .76rem;
 }
 
-/* Timeline-first citizen view: the action panel replaces the chat transcript. */
+/* Action-first citizen view: the current task stays ahead of case history. */
 .action-panel {
   padding: 16px;
   border: 2px solid var(--green);
@@ -387,6 +454,9 @@ header { flex-wrap: wrap; row-gap: 8px; }
   background: white;
   box-shadow: 0 10px 30px rgba(28, 35, 31, .08);
 }
+
+.case-card .action-panel { margin-top: 16px; }
+.timeline-heading { margin-top: 24px; }
 
 .action-panel h2 { margin: 4px 0 6px; font-size: 1.15rem; }
 
@@ -435,6 +505,31 @@ header { flex-wrap: wrap; row-gap: 8px; }
 }
 
 .feedback .listen-link { min-height: 36px; padding: 4px 8px; }
+
+.step-outcome {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.72);
+}
+.outcome-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.outcome-choices button {
+  min-height: 44px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  color: var(--green);
+  font-weight: 700;
+}
+.outcome-choices button[aria-pressed="true"] { border-color: var(--green); background: #e8f4ee; }
+.step-outcome label { display: grid; gap: 6px; font-size: .82rem; font-weight: 800; }
+.step-outcome textarea { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 12px; resize: vertical; font: inherit; }
+.outcome-success { margin: 0; color: var(--green); font-weight: 800; }
+.resolution-outcome { border-left: 4px solid var(--green); }
 
 .action-done { margin: 0; font-weight: 700; }
 

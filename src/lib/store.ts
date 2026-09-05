@@ -1,11 +1,17 @@
-import postgres, { type JSONValue } from "postgres";
+import { and, desc, eq } from "drizzle-orm";
+import { getDatabase } from "@/db/client";
+import {
+  citizenCasesTable,
+  contributorSubmissionsTable,
+  legacyWorkflowDefinitionsTable,
+} from "@/db/schema";
 import type { CaseSnapshot } from "./workflow";
 
 /**
  * One storage seam for everything that must outlive a page reload: citizen
  * cases, contributor submissions, and user-added workflows. Backed by Postgres
- * when DATABASE_URL is configured; otherwise a per-process memory store, so
- * development, tests, and a keyless deployment all keep working unchanged.
+ * in production and development. The in-memory implementation is an explicit
+ * test fixture only; runtime code fails closed when PostgreSQL is unavailable.
  */
 
 export type StoredCase = {
@@ -30,8 +36,9 @@ export type StoredWorkflow = {
 };
 
 export type Store = {
-  saveCase(id: string, snapshot: CaseSnapshot): Promise<void>;
-  listCases(limit: number): Promise<StoredCase[]>;
+  saveCase(id: string, snapshot: CaseSnapshot, ownerHash?: string): Promise<void>;
+  getCase(id: string, ownerHash?: string): Promise<StoredCase | null>;
+  listCases(limit: number, ownerHash?: string): Promise<StoredCase[]>;
   saveSubmission(submission: Omit<StoredSubmission, "id" | "createdAt">): Promise<void>;
   listSubmissions(limit: number): Promise<StoredSubmission[]>;
   saveWorkflow(definition: unknown, id: string): Promise<void>;
@@ -39,7 +46,7 @@ export type Store = {
 };
 
 const memory = {
-  cases: new Map<string, StoredCase>(),
+  cases: new Map<string, StoredCase & { ownerHash: string | null }>(),
   submissions: [] as StoredSubmission[],
   workflows: new Map<string, StoredWorkflow>(),
 };
@@ -55,18 +62,28 @@ function memoryTime(): string {
 }
 
 const memoryStore: Store = {
-  async saveCase(id, snapshot) {
+  async saveCase(id, snapshot, ownerHash) {
+    const existing = memory.cases.get(id);
     memory.cases.set(id, {
       id,
       workflowId: snapshot.workflowId,
       snapshot,
       updatedAt: memoryTime(),
+      ownerHash: existing?.ownerHash ?? ownerHash ?? null,
     });
   },
-  async listCases(limit) {
+  async listCases(limit, ownerHash) {
     return [...memory.cases.values()]
+      .filter((entry) => !ownerHash || entry.ownerHash === ownerHash)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(({ ownerHash: _ownerHash, ...entry }) => entry);
+  },
+  async getCase(id, ownerHash) {
+    const record = memory.cases.get(id);
+    if (!record || (ownerHash && record.ownerHash !== ownerHash)) return null;
+    const { ownerHash: _ownerHash, ...result } = record;
+    return result;
   },
   async saveSubmission(submission) {
     memory.submissions.push({
@@ -92,113 +109,89 @@ const memoryStore: Store = {
   },
 };
 
-let sql: ReturnType<typeof postgres> | null = null;
-let schemaReady: Promise<void> | null = null;
-
 function databaseUrl(): string | null {
   const url = process.env.DATABASE_URL;
   return url && url.trim() ? url : null;
 }
 
-function client(): ReturnType<typeof postgres> {
-  if (!sql) {
-    sql = postgres(databaseUrl()!, { max: 5, idle_timeout: 20 });
-    schemaReady = (async () => {
-      await sql!`CREATE TABLE IF NOT EXISTS sahayak_cases (
-        id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL,
-        snapshot JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )`;
-      await sql!`CREATE TABLE IF NOT EXISTS sahayak_submissions (
-        id BIGSERIAL PRIMARY KEY,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        workflow_id TEXT NOT NULL,
-        input TEXT NOT NULL,
-        draft JSONB NOT NULL
-      )`;
-      await sql!`CREATE TABLE IF NOT EXISTS sahayak_workflows (
-        id TEXT PRIMARY KEY,
-        definition JSONB NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )`;
-    })();
-  }
-  return sql;
-}
-
 const pgStore: Store = {
-  async saveCase(id, snapshot) {
-    const db = client();
-    await schemaReady;
-    await db`
-      INSERT INTO sahayak_cases (id, workflow_id, snapshot, updated_at)
-      VALUES (${id}, ${snapshot.workflowId}, ${db.json(snapshot)}, now())
-      ON CONFLICT (id) DO UPDATE
-      SET snapshot = EXCLUDED.snapshot, workflow_id = EXCLUDED.workflow_id, updated_at = now()
-    `;
+  async saveCase(id, snapshot, ownerHash) {
+    await getDatabase().insert(citizenCasesTable).values({
+      id,
+      workflowId: snapshot.workflowId,
+      ownerHash: ownerHash ?? null,
+      snapshot,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: citizenCasesTable.id,
+      set: { workflowId: snapshot.workflowId, snapshot, updatedAt: new Date() },
+    });
   },
-  async listCases(limit) {
-    const db = client();
-    await schemaReady;
-    return (await db`
-      SELECT id, workflow_id, snapshot, updated_at FROM sahayak_cases
-      ORDER BY updated_at DESC LIMIT ${limit}
-    `).map((row) => ({
+  async listCases(limit, ownerHash) {
+    const query = getDatabase().select().from(citizenCasesTable)
+      .orderBy(desc(citizenCasesTable.updatedAt)).limit(limit);
+    const rows = ownerHash
+      ? await query.where(eq(citizenCasesTable.ownerHash, ownerHash))
+      : await query;
+    return rows.map((row) => ({
       id: row.id,
-      workflowId: row.workflow_id,
-      snapshot: row.snapshot as CaseSnapshot,
-      updatedAt: new Date(row.updated_at).toISOString(),
+      workflowId: row.workflowId,
+      snapshot: row.snapshot,
+      updatedAt: row.updatedAt.toISOString(),
     }));
   },
+  async getCase(id, ownerHash) {
+    const condition = ownerHash
+      ? and(eq(citizenCasesTable.id, id), eq(citizenCasesTable.ownerHash, ownerHash))
+      : eq(citizenCasesTable.id, id);
+    const [row] = await getDatabase().select().from(citizenCasesTable)
+      .where(condition).limit(1);
+    return row ? {
+      id: row.id,
+      workflowId: row.workflowId,
+      snapshot: row.snapshot,
+      updatedAt: row.updatedAt.toISOString(),
+    } : null;
+  },
   async saveSubmission(submission) {
-    const db = client();
-    await schemaReady;
-    await db`
-      INSERT INTO sahayak_submissions (workflow_id, input, draft)
-      VALUES (${submission.workflowId}, ${submission.input}, ${db.json(submission.draft as JSONValue)})
-    `;
+    await getDatabase().insert(contributorSubmissionsTable).values(submission);
   },
   async listSubmissions(limit) {
-    const db = client();
-    await schemaReady;
-    return (await db`
-      SELECT id, created_at, workflow_id, input, draft FROM sahayak_submissions
-      ORDER BY created_at DESC LIMIT ${limit}
-    `).map((row) => ({
-      id: Number(row.id),
-      createdAt: new Date(row.created_at).toISOString(),
-      workflowId: row.workflow_id,
+    return (await getDatabase().select().from(contributorSubmissionsTable)
+      .orderBy(desc(contributorSubmissionsTable.createdAt)).limit(limit)).map((row) => ({
+      id: row.id,
+      createdAt: row.createdAt.toISOString(),
+      workflowId: row.workflowId,
       input: row.input,
       draft: row.draft,
     }));
   },
   async saveWorkflow(definition, id) {
-    const db = client();
-    await schemaReady;
-    await db`
-      INSERT INTO sahayak_workflows (id, definition)
-      VALUES (${id}, ${db.json(definition as JSONValue)})
-      ON CONFLICT (id) DO UPDATE SET definition = EXCLUDED.definition
-    `;
+    await getDatabase().insert(legacyWorkflowDefinitionsTable).values({ id, definition })
+      .onConflictDoUpdate({ target: legacyWorkflowDefinitionsTable.id, set: { definition } });
   },
   async listWorkflows() {
-    const db = client();
-    await schemaReady;
-    return (await db`
-      SELECT id, definition, created_at FROM sahayak_workflows ORDER BY created_at ASC
-    `).map((row) => ({
+    return (await getDatabase().select().from(legacyWorkflowDefinitionsTable)
+      .orderBy(legacyWorkflowDefinitionsTable.createdAt)).map((row) => ({
       id: row.id,
       definition: row.definition,
-      createdAt: new Date(row.created_at).toISOString(),
+      createdAt: row.createdAt.toISOString(),
     }));
   },
 };
 
-export const store: Store = databaseUrl() ? pgStore : memoryStore;
+const unavailableStore: Store = new Proxy({} as Store, {
+  get() {
+    return async () => { throw new Error("DATABASE_UNAVAILABLE"); };
+  },
+});
+
+export const store: Store = process.env.NODE_ENV === "test"
+  ? memoryStore
+  : databaseUrl() ? pgStore : unavailableStore;
 
 export function resetMemoryStore(): void {
-  if (databaseUrl()) return;
+  if (process.env.NODE_ENV !== "test") return;
   memory.cases.clear();
   memory.submissions.length = 0;
   memory.workflows.clear();

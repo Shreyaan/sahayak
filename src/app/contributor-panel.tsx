@@ -1,487 +1,100 @@
 "use client";
 
+import { type FormEvent, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { FormEvent, useEffect, useState } from "react";
-import type { ContributionDraft, ContributionStatus } from "@/lib/contribution";
-import type { WorkflowStepSpec } from "@/lib/custom-workflow";
-import { t as translate, tList, type Locale } from "@/lib/locale";
+import type { ContributionDraft } from "@/lib/contribution";
+import { t as translate, type Locale } from "@/lib/locale";
+import { indiaDistricts, indiaStates, jurisdictionLabel } from "@/lib/india-locations";
+import type { ReviewJurisdiction } from "@/lib/review-case";
+import { McpCallout } from "./mcp-callout";
 
-/** Message key for each status, so the badge reads in the active language. */
-const statusKey: Record<ContributionStatus, string> = {
-  draft: "status.draft",
-  "needs review": "status.needsReview",
-  "publishable draft": "status.publishableDraft",
-};
+type Scope = "central" | "state" | "district";
+type Preview = { draft: ContributionDraft; jurisdiction?: ReviewJurisdiction; jurisdictionReason?: { hi: string; en: string }; previewToken: string };
 
-type RecentSubmission = {
-  id: number;
-  createdAt: string;
-  workflowId: string;
-  title: string;
-  status: string;
-};
-
-type StepDraft = { title: string; detail: string; kind: WorkflowStepSpec["kind"]; url: string };
-
-const stepKinds: WorkflowStepSpec["kind"][] = ["confirm", "visit", "website", "desk"];
-
-function AIClerkCallout({ text }: { text: ReturnType<typeof useTranslations> }) {
-  const [copied, setCopied] = useState(false);
-  const endpoint = typeof window === "undefined" ? "/mcp" : `${window.location.origin}/mcp`;
-
-  async function copyEndpoint() {
-    try {
-      await navigator.clipboard.writeText(endpoint);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2_000);
-    } catch {
-      // Selection still lets the user copy manually.
-    }
-  }
-
-  return (
-    <aside className="ai-clerk-callout">
-      <h2>{text("ai.title")}</h2>
-      <p>{text("ai.copy")}</p>
-      <div className="ai-endpoint">
-        <small>{text("ai.endpointLabel")}</small>
-        <div className="ai-endpoint-row">
-          <code>{endpoint}</code>
-          <button type="button" onClick={() => void copyEndpoint()}>
-            {copied ? text("ai.copied") : text("ai.copyButton")}
-          </button>
-        </div>
-      </div>
-      <a className="ai-learn" href="/agents">{text("ai.learn")}</a>
-    </aside>
-  );
-}
-
-export function ContributorPanel({ onWorkflowAdded }: { onWorkflowAdded?: () => void }) {
-  const text = useTranslations("citizen.contributor");
+export function ContributorPanel() {
   const locale = useLocale() as Locale;
-  const [tab, setTab] = useState<"experience" | "workflow">("experience");
-
-  return (
-    <section className="contributor-panel" aria-labelledby="contributor-heading">
-      <p className="eyebrow" id="contributor-heading">{text("eyebrow")}</p>
-
-      <div className="contribution-tabs" role="tablist" aria-label={text("eyebrow")}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "experience"}
-          className={tab === "experience" ? "active" : ""}
-          onClick={() => setTab("experience")}
-        >
-          {text("tabs.experience")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "workflow"}
-          className={tab === "workflow" ? "active" : ""}
-          onClick={() => setTab("workflow")}
-        >
-          {text("tabs.workflow")}
-        </button>
-      </div>
-
-      <h1 className="visually-hidden">
-        {tab === "experience" ? text("tabs.experience") : text("tabs.workflow")}
-      </h1>
-
-      <AIClerkCallout text={text} />
-
-      {tab === "experience"
-        ? <ExperienceTab text={text} locale={locale} />
-        : <WorkflowTab text={text} locale={locale} onWorkflowAdded={onWorkflowAdded} />}
-    </section>
-  );
-}
-
-function ExperienceTab({
-  text,
-  locale,
-}: {
-  text: ReturnType<typeof useTranslations>;
-  locale: Locale;
-}) {
+  const text = useTranslations("citizen.contributor");
+  const [title, setTitle] = useState("");
   const [input, setInput] = useState("");
-  const [draft, setDraft] = useState<ContributionDraft | null>(null);
-  const [compiledInput, setCompiledInput] = useState("");
-  const [submitState, setSubmitState] = useState<"idle" | "busy" | "done" | "error">("idle");
-  const [recent, setRecent] = useState<RecentSubmission[]>([]);
+  const [scope, setScope] = useState<Scope | "">("");
+  const [stateCode, setStateCode] = useState("");
+  const [districtCode, setDistrictCode] = useState("");
+  const [previewState, setPreviewState] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [reviewUrl, setReviewUrl] = useState<string>();
 
-  useEffect(() => {
-    fetch("/api/submissions")
-      .then((response) => response.json())
-      .then((result) => Array.isArray(result.submissions) && setRecent(result.submissions))
-      .catch(() => {});
-  }, []);
+  const jurisdictionReady = !scope || scope === "central" || Boolean(stateCode) && (scope !== "district" || Boolean(districtCode));
+  function clearPreview() { setPreviewState(null); setReviewUrl(undefined); }
 
-  const examples = [
-    { label: text("examples.bereavementLabel"), text: text("examples.bereavementText") },
-    { label: text("examples.scholarshipLabel"), text: text("examples.scholarshipText") },
-  ];
 
-  async function compile(event: FormEvent) {
+  async function preview(event: FormEvent) {
     event.preventDefault();
-    const value = input.trim();
-    if (!value || busy) return;
-
-    setBusy(true);
-    setError("");
-    setSubmitState("idle");
-
+    if (!input.trim() || busy || !jurisdictionReady) return;
+    setBusy(true); setError(""); clearPreview();
     try {
-      const response = await fetch("/api/contribute", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: value }),
-      });
+      const jurisdiction = scope ? { scope, ...(scope !== "central" ? { stateCode } : {}), ...(scope === "district" ? { districtCode } : {}) } : undefined;
+      const response = await fetch("/api/contribute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: title.trim() || undefined, input, locale, jurisdiction }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || text("error"));
-      setDraft(result);
-      setCompiledInput(value);
+      if (!response.ok) throw new Error(result.error?.code === "UNSUPPORTED_CONTRIBUTION" ? text("review.unsupported") : text("error"));
+      setPreviewState({ draft: result, jurisdiction: result.jurisdiction, jurisdictionReason: result.jurisdictionReason, previewToken: result.previewToken });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : text("error"));
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
-  async function submitForReview() {
-    if (!draft || !compiledInput || submitState === "busy") return;
-
-    setSubmitState("busy");
+  async function confirm() {
+    if (!previewState || busy) return;
+    setBusy(true); setError("");
     try {
       const response = await fetch("/api/submissions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: compiledInput, draft }),
-      });
-      if (!response.ok) throw new Error();
-      setSubmitState("done");
-
-      const updated = await fetch("/api/submissions").then((r) => r.json());
-      if (Array.isArray(updated.submissions)) setRecent(updated.submissions);
-    } catch {
-      setSubmitState("error");
-    }
-  }
-
-  return (
-    <>
-      <p className="contributor-copy">{text("copy")}</p>
-
-      <form className="contribution-form" onSubmit={compile}>
-        <label htmlFor="contribution-input">{text("label")}</label>
-        <textarea
-          id="contribution-input"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder={text("placeholder")}
-          rows={7}
-          maxLength={2_000}
-        />
-        <div className="contribution-actions">
-          {examples.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className="secondary-action"
-              onClick={() => setInput(item.text)}
-            >
-              {item.label}
-            </button>
-          ))}
-          <button type="submit" className="primary-action" disabled={busy || !input.trim()}>
-            {busy ? text("compiling") : text("compile")}
-          </button>
-        </div>
-      </form>
-
-      {error && <p className="contribution-error" role="alert">{error}</p>}
-
-      {draft && (
-        <section className="draft-card" aria-live="polite">
-          <div className="draft-heading">
-            <div>
-              <p className="eyebrow">{text("draftEyebrow")}</p>
-              <h2>{translate(draft.title, locale)}</h2>
-            </div>
-            <span className="draft-status">{text(statusKey[draft.status])}</span>
-          </div>
-
-          <DraftList title={text("sections.steps")} items={tList(draft.steps, locale)} />
-          <DraftList
-            title={text("sections.matches")}
-            items={tList(draft.matches, locale)}
-            empty={text("sections.matchesEmpty")}
-          />
-          <DraftList
-            title={text("sections.additions")}
-            items={tList(draft.additions, locale)}
-            empty={text("sections.additionsEmpty")}
-          />
-
-          <section className="draft-section">
-            <h3>{text("sections.conflicts")}</h3>
-            {draft.conflicts.length ? (
-              <ul>
-                {draft.conflicts.map((conflict) => (
-                  <li key={conflict.submitted.en}>
-                    <strong>{translate(conflict.field, locale)}:</strong>{" "}
-                    {text("conflictComparison", {
-                      submitted: translate(conflict.submitted, locale),
-                      bundled: translate(conflict.bundled, locale),
-                    })}{" "}
-                    {translate(conflict.reason, locale)}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>{text("sections.conflictsEmpty")}</p>
-            )}
-          </section>
-
-          <p className="draft-meta">
-            {text("meta", {
-              source: text("sourceType"),
-              count: draft.corroborationCount,
-              workflow: draft.workflowId,
-            })}
-          </p>
-          <p className="draft-meta">
-            {draft.conflicts.length
-              ? text("verdict.held")
-              : draft.corroborationCount >= 2
-                ? text("verdict.corroborated")
-                : text("verdict.single")}
-          </p>
-          {submitState === "done"
-            ? <p className="draft-meta submitted-note" role="status">{text("submitted")}</p>
-            : (
-              <button
-                type="button"
-                className="primary-action"
-                disabled={submitState === "busy"}
-                onClick={() => void submitForReview()}
-              >
-                {submitState === "busy" ? text("submitting") : text("submit")}
-              </button>
-            )}
-          {submitState === "error" && (
-            <p className="contribution-error" role="alert">{text("submitError")}</p>
-          )}
-        </section>
-      )}
-
-      {recent.length > 0 && (
-        <section className="draft-section">
-          <h3>{text("recent.heading")}</h3>
-          <ul className="recent-submissions">
-            {recent.map((submission) => (
-              <li key={submission.id}>
-                <strong>{submission.title || submission.workflowId}</strong>
-                <small>
-                  {new Date(submission.createdAt).toLocaleString()} · {submission.status}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
-  );
-}
-
-function WorkflowTab({
-  text,
-  locale,
-  onWorkflowAdded,
-}: {
-  text: ReturnType<typeof useTranslations>;
-  locale: Locale;
-  onWorkflowAdded?: () => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [subtitle, setSubtitle] = useState("");
-  const [steps, setSteps] = useState<StepDraft[]>([
-    { title: "", detail: "", kind: "confirm", url: "" },
-  ]);
-  const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState<string | null>(null);
-  const [error, setError] = useState("");
-
-  function updateStep(index: number, patch: Partial<StepDraft>) {
-    setSteps((current) => current.map((step, i) => (i === index ? { ...step, ...patch } : step)));
-  }
-
-  const urlInvalid = steps.some(
-    (step) => step.kind === "website" && !/^https:\/\/[^\s]+\.[^\s]+/.test(step.url.trim()),
-  );
-
-  async function create(event: FormEvent) {
-    event.preventDefault();
-    if (busy || !title.trim() || !steps.some((step) => step.title.trim()) || urlInvalid) return;
-
-    setBusy(true);
-    setError("");
-    setCreated(null);
-
-    try {
-      const response = await fetch("/api/workflows", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          ...(subtitle.trim() ? { subtitle: subtitle.trim() } : {}),
-          steps: steps
-            .filter((step) => step.title.trim())
-            .map((step) => ({
-              title: step.title.trim(),
-              ...(step.detail.trim() ? { detail: step.detail.trim() } : {}),
-              ...(step.kind === "website" && step.url.trim() ? { url: step.url.trim() } : {}),
-              kind: step.kind,
-            })),
-        }),
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmed: true, previewToken: previewState.previewToken }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || text("builder.error"));
-
-      setCreated(translate(result.definition.title, locale));
-      onWorkflowAdded?.();
+      if (!response.ok) throw new Error(text("submitError"));
+      setReviewUrl(result.reviewUrl);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : text("builder.error"));
-    } finally {
-      setBusy(false);
-    }
+      setError(reason instanceof Error ? reason.message : text("submitError"));
+    } finally { setBusy(false); }
   }
 
-  return (
-    <>
-      <p className="contributor-copy">{text("builder.copy")}</p>
+  const fieldClassName = "mt-1 min-h-12 w-full rounded-xl border border-[#d9cfbf] bg-white px-3 py-3 text-base text-[#17231d] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#e69d18]";
 
-      <form className="contribution-form" onSubmit={create}>
-        <h2 className="builder-group">{text("builder.about")}</h2>
-        <label htmlFor="workflow-title">{text("builder.titleLabel")}</label>
-        <input
-          id="workflow-title"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={text("builder.titlePlaceholder")}
-          maxLength={120}
-        />
+  return <section className="pt-9" aria-labelledby="contributor-heading">
+    <div className="max-w-3xl">
+      <p className="m-0 text-xs font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("eyebrow")}</p>
+      <h1 id="contributor-heading" className="my-2 max-w-2xl text-[clamp(2.25rem,5vw,3.5rem)] font-black leading-[1.02] tracking-[-0.04em]">{text("heading")}</h1>
+      <p className="mt-3 max-w-2xl text-base leading-7 text-[#536059]">{text("review.copy")}</p>
+    </div>
 
-        <label htmlFor="workflow-subtitle">{text("builder.subtitleLabel")}</label>
-        <input
-          id="workflow-subtitle"
-          value={subtitle}
-          onChange={(event) => setSubtitle(event.target.value)}
-          placeholder={text("builder.subtitlePlaceholder")}
-          maxLength={160}
-        />
+    <div className="mt-10 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_310px]">
+      <div className="min-w-0">
+        <form className="grid gap-2 rounded-[22px] border border-[#d9cfbf] bg-white/70 p-7 shadow-[0_14px_40px_rgba(52,43,27,0.07)] max-sm:p-5" onSubmit={preview}>
+          <label className="text-sm font-extrabold" htmlFor="contribution-title">{text("titleLabel")}</label>
+          <input className={fieldClassName} id="contribution-title" value={title} onChange={(event) => { setTitle(event.target.value); clearPreview(); }} maxLength={120} placeholder={text("titlePlaceholder")} />
+          <label className="mb-2 mt-5 text-xl font-extrabold" htmlFor="contribution-input">{text("label")}</label>
+          <textarea className={`${fieldClassName} min-h-56 resize-y leading-6`} id="contribution-input" value={input} onChange={(event) => { setInput(event.target.value); clearPreview(); }} rows={8} maxLength={2_000} placeholder={text("placeholder")} required />
 
-        <h2 className="builder-group">{text("builder.stepsHeading")}</h2>
+          <div className="mt-5 border-t border-[#d9cfbf] pt-5">
+            <label className="text-sm font-extrabold" htmlFor="jurisdiction-scope">02 · {text("review.jurisdiction")}</label>
+            <p className="mt-1 text-sm leading-6 text-[#536059]" id="jurisdiction-help">{text("review.jurisdictionHelp")}</p>
+            <select aria-describedby="jurisdiction-help" className={fieldClassName} id="jurisdiction-scope" value={scope} onChange={(event) => { const next = event.target.value as Scope | ""; setScope(next); setStateCode(""); setDistrictCode(""); clearPreview(); }}>
+              <option value="">{text("review.suggest")}</option><option value="central">{text("review.central")}</option><option value="state">{text("review.state")}</option><option value="district">{text("review.district")}</option>
+            </select>
+            {(scope === "state" || scope === "district") && <><label className="mt-4 block text-sm font-extrabold" htmlFor="state-code">{text("review.stateName")}</label><select className={fieldClassName} id="state-code" value={stateCode} onChange={(event) => { setStateCode(event.target.value); setDistrictCode(""); clearPreview(); }} required><option value="">{text("review.chooseState")}</option>{indiaStates.map((state) => <option key={state.code} value={state.code}>{state.name}</option>)}</select></>}
+            {scope === "district" && <><label className="mt-4 block text-sm font-extrabold" htmlFor="district-code">{text("review.districtName")}</label><select className={fieldClassName} id="district-code" value={districtCode} onChange={(event) => { setDistrictCode(event.target.value); clearPreview(); }} disabled={!stateCode} required><option value="">{text("review.chooseDistrict")}</option>{indiaDistricts(stateCode).map((district) => <option key={district} value={district}>{district}</option>)}</select></>}
+          </div>
+          <button type="submit" className="mt-5 min-h-12 justify-self-end rounded-xl bg-[var(--marigold)] px-6 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-50 max-sm:w-full" disabled={busy || !input.trim() || !jurisdictionReady}>{busy ? text("review.preparing") : text("review.preview")}</button>
+        </form>
 
-        {steps.map((step, index) => (
-          <fieldset key={index} className="builder-step">
-            <legend>{text("builder.stepN", { n: index + 1 })}</legend>
-            <input
-              value={step.title}
-              onChange={(event) => updateStep(index, { title: event.target.value })}
-              placeholder={text("builder.stepTitle")}
-              maxLength={160}
-              aria-label={text("builder.stepTitle")}
-            />
-            <input
-              value={step.detail}
-              onChange={(event) => updateStep(index, { detail: event.target.value })}
-              placeholder={text("builder.stepDetail")}
-              maxLength={500}
-              aria-label={text("builder.stepDetail")}
-            />
-            <div className="kind-picker" role="radiogroup" aria-label={text("builder.kind")}>
-              {stepKinds.map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  role="radio"
-                  aria-checked={step.kind === kind}
-                  className={step.kind === kind ? "active" : ""}
-                  onClick={() => updateStep(index, { kind })}
-                >
-                  {text(`builder.kinds.${kind}`)}
-                </button>
-              ))}
-            </div>
-            {step.kind === "website" && (
-              <>
-                <label htmlFor={`step-url-${index}`}>{text("builder.urlLabel")}</label>
-                <input
-                  id={`step-url-${index}`}
-                  value={step.url}
-                  onChange={(event) => updateStep(index, { url: event.target.value })}
-                  placeholder={text("builder.urlPlaceholder")}
-                  maxLength={500}
-                  inputMode="url"
-                  className={urlInvalid && !step.url.trim() ? "" : undefined}
-                  aria-invalid={step.kind === "website" && step.url.trim() ? !/^https:\/\/[^\s]+\.[^\s]+/.test(step.url.trim()) : undefined}
-                />
-                {step.url.trim() && !/^https:\/\/[^\s]+\.[^\s]+/.test(step.url.trim()) && (
-                  <p className="contribution-error" role="alert">{text("builder.urlInvalid")}</p>
-                )}
-              </>
-            )}
-            {steps.length > 1 && (
-              <button
-                type="button"
-                className="secondary-action"
-                onClick={() => setSteps((current) => current.filter((_, i) => i !== index))}
-              >
-                {text("builder.remove")}
-              </button>
-            )}
-          </fieldset>
-        ))}
+        {error && <p className="mt-4 font-bold text-[#8b2e24]" role="alert">{error}</p>}
+        {previewState && <section className="mt-6 rounded-[22px] border border-[#d9cfbf] bg-white/70 p-6" aria-live="polite"><p className="m-0 text-xs font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("review.previewEyebrow")}</p><h2 className="mt-1 text-2xl font-bold">{translate(previewState.draft.title, locale)}</h2><p className="mt-2 leading-7 text-[#536059]">{translate(previewState.draft.summary, locale)}</p>{previewState.jurisdiction && <><h3 className="mt-6 font-extrabold">{text("review.jurisdiction")}</h3><p className="mt-1 text-[#536059]"><strong>{jurisdictionLabel(previewState.jurisdiction, locale)}</strong>{previewState.jurisdictionReason ? ` — ${translate(previewState.jurisdictionReason, locale)}` : ""}</p><p className="mt-1 text-sm text-[#536059]">{text("review.checkJurisdiction")}</p></>}<h3 className="mt-6 font-extrabold">{text("sections.steps")}</h3><ol className="mt-2 list-decimal space-y-2 pl-5 text-[#536059]">{previewState.draft.steps.map((step, index) => <li key={`${index}-${step.en}`}>{translate(step, locale)}</li>)}</ol><h3 className="mt-6 font-extrabold">{text("sections.additions")}</h3><ul className="mt-2 list-disc space-y-2 pl-5 text-[#536059]">{previewState.draft.additions.map((item) => <li key={item.en}>{translate(item, locale)}</li>)}</ul><h3 className="mt-6 font-extrabold">{text("sections.conflicts")}</h3><ul className="mt-2 list-disc space-y-2 pl-5 text-[#536059]">{previewState.draft.conflicts.map((item) => <li key={item.field.en}>{translate(item.field, locale)}: {translate(item.reason, locale)}</li>)}</ul>{reviewUrl ? <p className="mt-6 rounded-xl bg-[#edf4ee] p-4 font-bold text-[var(--green)]" role="status">{text("review.success")} <a className="underline" href={reviewUrl}>{text("review.openReview")}</a> — {text("review.signInRequired")}</p> : <button type="button" className="mt-6 min-h-12 rounded-xl bg-[var(--marigold)] px-6 font-extrabold text-[#2f250f] disabled:opacity-50" disabled={busy} onClick={() => void confirm()}>{busy ? text("submitting") : text("review.confirm")}</button>}</section>}
+      </div>
 
-        <div className="contribution-actions">
-          <button
-            type="button"
-            className="secondary-action"
-            onClick={() => setSteps((current) => [...current, { title: "", detail: "", kind: "confirm", url: "" }])}
-          >
-            {text("builder.addStep")}
-          </button>
-          <button
-            type="submit"
-            className="primary-action"
-            disabled={busy || !title.trim() || urlInvalid || !steps.some((step) => step.title.trim())}
-          >
-            {busy ? text("builder.creating") : text("builder.create")}
-          </button>
-        </div>
-      </form>
-
-      {created && (
-        <p className="contribution-success" role="status">
-          {text("builder.created", { title: created })}
-        </p>
-      )}
-      {error && <p className="contribution-error" role="alert">{error}</p>}
-    </>
-  );
-}
-
-function DraftList({ title, items, empty }: { title: string; items: string[]; empty?: string }) {
-  return (
-    <section className="draft-section">
-      <h3>{title}</h3>
-      {items.length ? <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul> : <p>{empty}</p>}
-    </section>
-  );
+      <aside className="lg:sticky lg:top-6">
+        <McpCallout />
+      </aside>
+    </div>
+  </section>;
 }

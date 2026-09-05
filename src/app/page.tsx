@@ -1,55 +1,70 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useQueryState } from "nuqs";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import { artifactContent } from "@/lib/artifacts";
 import { t as translate, tList, type Locale } from "@/lib/locale";
 import { stopMediaStream } from "@/lib/media";
 import {
-  findNode,
-  getWorkflowDefinition,
+  getCaseWorkflowDefinition,
   nodeNote,
   registerWorkflowDefinition,
-  startCase,
-  workflows,
   type CaseSnapshot,
   type WorkflowDefinition,
 } from "@/lib/workflow";
+import { CitizenHome, type StoredCase } from "./citizen-home";
 import { ContributorPanel } from "./contributor-panel";
 import { LanguageSwitcher } from "./language-switcher";
+import { ResolutionOutcomeForm, StepOutcomeForm } from "./step-outcome-form";
 
-type StoredCase = {
-  id: string;
-  workflowId: string;
-  snapshot: CaseSnapshot;
-  updatedAt: string;
-};
-
-/** Carries the live case to the Case Card, which re-reads all content from the seed. */
-function caseCardHref(caseSnapshot: CaseSnapshot): string {
-  const json = JSON.stringify(caseSnapshot);
-  const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-  return `/case-card?case=${base64}`;
+/** A saved Case Card is loaded through the browser-private case API. */
+function caseCardHref(caseId: string): string {
+  return `/case-card?caseId=${encodeURIComponent(caseId)}`;
 }
 
-export default function Home() {
+function VisitCard({ node, locale }: { node: WorkflowDefinition["nodes"][number]; locale: Locale }) {
+  const text = useTranslations("citizen");
+  if (!node.visit) return null;
+
+  return (
+    <div className="visit-card">
+      <p className="eyebrow">{text("visit.eyebrow")}</p>
+      <strong>{translate(node.visit.office, locale)}</strong>
+      <p>{translate(node.visit.why, locale)}</p>
+      <p className="visit-label">{text("visit.carry")}</p>
+      <ul>{tList(node.visit.carry, locale).map((item) => <li key={item}>{item}</li>)}</ul>
+      <p className="visit-label">{text("visit.script")}</p>
+      <p className="visit-script">“{translate(node.visit.script, locale)}”</p>
+      <p className="visit-label">{text("visit.expect")}</p>
+      <p>{translate(node.visit.expect, locale)}</p>
+      <p className="visit-label">{text("visit.collect")}</p>
+      <p>{translate(node.visit.collect, locale)}</p>
+      <p className="visit-warning">
+        {text("visit.warning")}
+        <em>{text("visit.warningNote")}</em>
+      </p>
+    </div>
+  );
+}
+
+export function HomeContent() {
   const text = useTranslations("citizen");
   const common = useTranslations("common");
   const locale = useLocale() as Locale;
+  const [activeCaseId, setActiveCaseId] = useQueryState("caseId", { history: "replace" });
+  const requestError = text("error.request");
 
   const [contributorMode, setContributorMode] = useState(false);
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>(Object.values(workflows));
   const [savedCases, setSavedCases] = useState<StoredCase[]>([]);
   const [caseId, setCaseId] = useState<string | null>(null);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [reportStepId, setReportStepId] = useState<string>();
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [resumeAttempt, setResumeAttempt] = useState(0);
   const recorder = useRef<MediaRecorder | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
   const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,19 +96,6 @@ export default function Home() {
 
   useEffect(() => () => stopActiveRecording(true, false), []);
 
-  /** Re-reads every journey (bundled and user-added) into the client registry. */
-  async function refreshWorkflows() {
-    try {
-      const response = await fetch("/api/workflows");
-      const result = await response.json();
-      if (!Array.isArray(result.workflows)) return;
-      for (const definition of result.workflows) registerWorkflowDefinition(definition);
-      setDefinitions(result.workflows);
-    } catch {
-      // The bundled definitions are already registered; nothing to do.
-    }
-  }
-
   async function refreshCases() {
     try {
       const response = await fetch("/api/cases");
@@ -105,9 +107,31 @@ export default function Home() {
   }
 
   useEffect(() => {
-    void refreshWorkflows();
     void refreshCases();
   }, []);
+
+  useEffect(() => {
+    if (!activeCaseId || activeCaseId === caseId) return;
+
+    let cancelled = false;
+    setFeedback("");
+    fetch(`/api/cases/${encodeURIComponent(activeCaseId)}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Case unavailable");
+        return result;
+      })
+      .then((result) => {
+        if (cancelled) return;
+        registerWorkflowDefinition(result.definition as WorkflowDefinition, result.case.snapshot.workflowVersionId);
+        openCase(result.case.snapshot, result.case.id);
+      })
+      .catch(() => {
+        if (!cancelled) setFeedback(requestError);
+      });
+
+    return () => { cancelled = true; };
+  }, [activeCaseId, caseId, requestError, resumeAttempt]);
 
   /**
    * The server is the only authority for case transitions: whatever snapshot it
@@ -119,6 +143,8 @@ export default function Home() {
     if (busy || !caseSnapshot) return;
 
     setBusy(true);
+    const actedStepId = caseSnapshot.nodes.find((node) =>
+      node.state === (body.action === "advance-day" ? "verifying" : "needs-you"))?.id;
 
     try {
       const response = await fetch("/api/chat", {
@@ -131,6 +157,10 @@ export default function Home() {
 
       setCaseSnapshot(result.caseSnapshot);
       setFeedback(result.reply);
+      const actedStep = actedStepId
+        ? result.caseSnapshot.nodes.find((node: { id: string }) => node.id === actedStepId)
+        : undefined;
+      if (actedStep?.state === "done") setReportStepId(actedStepId);
     } catch {
       setFeedback(text("error.request"));
     } finally {
@@ -161,22 +191,34 @@ export default function Home() {
     setCaseSnapshot(caseSnapshot);
     setAnswer("");
     setFeedback("");
+    setReportStepId(undefined);
+    window.scrollTo({ top: 0 });
   }
 
-  async function startJourney(workflowId: string) {
+  function resumeCase(id: string) {
+    setFeedback("");
+    if (id === activeCaseId) {
+      setResumeAttempt((attempt) => attempt + 1);
+    } else {
+      void setActiveCaseId(id);
+    }
+  }
+
+  async function startJourney(workflowVersionId: string) {
     try {
       const response = await fetch("/api/cases", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ workflowId }),
+        body: JSON.stringify({ workflowVersionId }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
 
+      registerWorkflowDefinition(result.definition as WorkflowDefinition, result.caseSnapshot.workflowVersionId);
       openCase(result.caseSnapshot, result.caseId);
+      await setActiveCaseId(result.caseId);
     } catch {
-      // The case still runs without persistence when the server call fails.
-      openCase(startCase(workflowId), null);
+      setFeedback(text("error.request"));
     }
   }
 
@@ -184,7 +226,9 @@ export default function Home() {
     stopActiveRecording(true);
     setCaseSnapshot(null);
     setCaseId(null);
+    void setActiveCaseId(null);
     setFeedback("");
+    setReportStepId(undefined);
     setAnswer("");
     void refreshCases();
   }
@@ -267,10 +311,11 @@ export default function Home() {
     setContributorMode((current) => !current);
   }
 
-  const workflow = caseSnapshot && getWorkflowDefinition(caseSnapshot.workflowId);
+  const workflow = caseSnapshot && getCaseWorkflowDefinition(caseSnapshot);
   const openNode = caseSnapshot?.nodes.find((node) => node.state === "needs-you");
-  const current = caseSnapshot && openNode ? findNode(caseSnapshot.workflowId, openNode.id) : undefined;
+  const current = workflow && openNode ? workflow.nodes.find((node) => node.id === openNode.id) : undefined;
   const waiting = caseSnapshot?.nodes.some((node) => node.state === "verifying") ?? false;
+  const resolved = caseSnapshot?.nodes.some((node) => node.id === "case-done" && node.state === "done") ?? false;
   const confirmText = current
     ? (current.confirmLabel ? translate(current.confirmLabel, locale) : text("action.yesDefault"))
     : "";
@@ -293,7 +338,7 @@ export default function Home() {
     : "";
 
   return (
-    <main>
+    <main className={!caseSnapshot ? "!w-full max-w-[1180px]" : undefined}>
       <header>
         <div className="brand">{common("brand")}</div>
         <div className="header-actions">
@@ -310,60 +355,9 @@ export default function Home() {
       </header>
 
       {contributorMode ? (
-        <ContributorPanel onWorkflowAdded={() => void refreshWorkflows()} />
+        <ContributorPanel />
       ) : !caseSnapshot || !workflow ? (
-        <>
-          <section className="intro">
-            <p className="eyebrow">{common("tagline")}</p>
-            <h1>{text("intro.heading")}</h1>
-            <p>{text("intro.lead")}</p>
-          </section>
-
-          <section className="journeys">
-            <div className="journey-grid">
-              {definitions.map((definition) => (
-                <button
-                  key={definition.id}
-                  className="journey"
-                  type="button"
-                  onClick={() => void startJourney(definition.id)}
-                >
-                  <strong>{translate(definition.title, locale)}</strong>
-                  <small>{translate(definition.subtitle, locale)}</small>
-                  <span className="journey-go">{text("journeyStart")}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {savedCases.length > 0 && (
-            <section className="journeys">
-              <p className="eyebrow">{text("yourCases.heading")}</p>
-              <div className="journey-grid">
-                {savedCases.map((stored) => {
-                  const definition = getWorkflowDefinition(stored.snapshot.workflowId);
-
-                  return (
-                    <button
-                      key={stored.id}
-                      className="journey"
-                      type="button"
-                      onClick={() => openCase(stored.snapshot, stored.id)}
-                    >
-                      <strong>
-                        {definition
-                          ? translate(definition.title, locale)
-                          : stored.snapshot.workflowId}
-                      </strong>
-                      <small>{text("yourCases.day", { day: stored.snapshot.day })}</small>
-                      <span className="journey-go">{text("yourCases.resume")}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-        </>
+        <CitizenHome locale={locale} savedCases={savedCases} feedback={feedback} onStart={startJourney} onResume={resumeCase} />
       ) : (
         <>
           <section className="case-card">
@@ -380,22 +374,101 @@ export default function Home() {
                 <strong>{text("case.day", { day: caseSnapshot.day })}</strong>
                 <small>{text("case.demoTime")}</small>
               </div>
-              <button className="secondary-action" type="button" disabled={busy} onClick={() => void advanceDay()}>
+              <button className="secondary-action" type="button" disabled={busy || !waiting} onClick={() => void advanceDay()}>
                 {text("case.advanceDay")}
               </button>
             </div>
 
+            <section className="action-panel" aria-live="polite">
+              {current ? (
+                <>
+                  <p className="eyebrow">{text("action.eyebrow")}</p>
+                  <h2>{actionTitle}</h2>
+                  {showDetail && <p className="action-detail">{actionDetail}</p>}
+                  <p className="action-question">{actionAsk}</p>
+                  {current.link && (
+                    <p className="action-link">
+                      <a href={current.link.url} target="_blank" rel="noopener noreferrer">
+                        🔗 {text("web.open")}
+                      </a>
+                      <small>{translate(current.link.collect, locale)}</small>
+                    </p>
+                  )}
+                  <VisitCard node={current} locale={locale} />
+                  <div className="action-buttons">
+                    <button
+                      className="primary-action"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void answerWithIntent("affirmative")}
+                    >
+                      {confirmText}
+                    </button>
+                    {current.onDecline && (
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void answerWithIntent("negative")}
+                      >
+                        {declineText}
+                      </button>
+                    )}
+                    <button
+                      className="listen-link"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void speak(spokenAction)}
+                      aria-label={text("action.listenLabel")}
+                    >
+                      🔊 {text("action.listen")}
+                    </button>
+                  </div>
+                </>
+              ) : waiting ? (
+                <p className="waiting" role="status">
+                  <span className="waiting-dot" />
+                  {text("case.waiting")}
+                  <em>{text("case.waitingNote")}</em>
+                </p>
+              ) : (
+                <p className="action-done">{text("case.allDone")}</p>
+              )}
+
+              {feedback && (
+                <p className="feedback" role="status">
+                  {feedback}
+                  <button
+                    className="listen-link"
+                    type="button"
+                    onClick={() => void speak(feedback)}
+                    aria-label={text("action.listenLabel")}
+                  >
+                    🔊
+                  </button>
+                </p>
+              )}
+
+              {caseId && reportStepId && (
+                <StepOutcomeForm caseId={caseId} stepId={reportStepId} locale={locale} />
+              )}
+
+              {caseId && resolved && (
+                <ResolutionOutcomeForm caseId={caseId} locale={locale} />
+              )}
+            </section>
+
+            <p className="eyebrow timeline-heading">{text("case.history")}</p>
             <ol className="timeline">
               {caseSnapshot.nodes.map((node) => {
-                const definition = findNode(caseSnapshot.workflowId, node.id);
+                const definition = workflow.nodes.find((candidate) => candidate.id === node.id);
                 if (!definition) return null;
-                const isCurrent = node.state === "needs-you";
                 const note = nodeNote(caseSnapshot, node.id);
 
                 return (
                   <li key={node.id} className={node.state}>
                     <span className="dot" />
-                    <details open={isCurrent}>
+                    <details>
                       <summary>
                         <strong>{translate(definition.title, locale)}</strong>
                         <small>{text(`state.${node.state}`)}</small>
@@ -413,27 +486,6 @@ export default function Home() {
                           </a>
                         </p>
                       )}
-                      {isCurrent && definition.visit && (
-                        <div className="visit-card">
-                          <p className="eyebrow">{text("visit.eyebrow")}</p>
-                          <strong>{translate(definition.visit.office, locale)}</strong>
-                          <p>{translate(definition.visit.why, locale)}</p>
-                          <p className="visit-label">{text("visit.carry")}</p>
-                          <ul>
-                            {tList(definition.visit.carry, locale).map((item) => <li key={item}>{item}</li>)}
-                          </ul>
-                          <p className="visit-label">{text("visit.script")}</p>
-                          <p className="visit-script">“{translate(definition.visit.script, locale)}”</p>
-                          <p className="visit-label">{text("visit.expect")}</p>
-                          <p>{translate(definition.visit.expect, locale)}</p>
-                          <p className="visit-label">{text("visit.collect")}</p>
-                          <p>{translate(definition.visit.collect, locale)}</p>
-                          <p className="visit-warning">
-                            {text("visit.warning")}
-                            <em>{text("visit.warningNote")}</em>
-                          </p>
-                        </div>
-                      )}
                     </details>
                   </li>
                 );
@@ -446,93 +498,21 @@ export default function Home() {
                 <ul>
                   {caseSnapshot.artifacts.map((id) => (
                     <li key={id}>
-                      <a href={caseCardHref(caseSnapshot)}>
+                      {caseId ? <a href={caseCardHref(caseId)}>
                         <strong>{translate(artifactContent[id].title, locale)}</strong>
                         <small>{translate(artifactContent[id].subtitle, locale)}</small>
-                      </a>
+                      </a> : <><strong>{translate(artifactContent[id].title, locale)}</strong><small>{translate(artifactContent[id].subtitle, locale)}</small></>}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            <a className="case-card-link" href={caseCardHref(caseSnapshot)}>
-              {text("case.openCaseCard")}
-            </a>
+            {caseId && <a className="case-card-link" href={caseCardHref(caseId)}>{text("case.openCaseCard")}</a>}
 
             <button className="reset-demo" type="button" onClick={resetDemo}>
               {text("case.startOver")}
             </button>
-          </section>
-
-          <section className="action-panel" aria-live="polite">
-            {current ? (
-              <>
-                <p className="eyebrow">{text("action.eyebrow")}</p>
-                <h2>{actionTitle}</h2>
-                {showDetail && <p className="action-detail">{actionDetail}</p>}
-                <p className="action-question">{actionAsk}</p>
-                {current.link && (
-                  <p className="action-link">
-                    <a href={current.link.url} target="_blank" rel="noopener noreferrer">
-                      🔗 {text("web.open")}
-                    </a>
-                    <small>{translate(current.link.collect, locale)}</small>
-                  </p>
-                )}
-                <div className="action-buttons">
-                  <button
-                    className="primary-action"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void answerWithIntent("affirmative")}
-                  >
-                    {confirmText}
-                  </button>
-                  {current.onDecline && (
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void answerWithIntent("negative")}
-                    >
-                      {declineText}
-                    </button>
-                  )}
-                  <button
-                    className="listen-link"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void speak(spokenAction)}
-                    aria-label={text("action.listenLabel")}
-                  >
-                    🔊 {text("action.listen")}
-                  </button>
-                </div>
-              </>
-            ) : waiting ? (
-              <p className="waiting" role="status">
-                <span className="waiting-dot" />
-                {text("case.waiting")}
-                <em>{text("case.waitingNote")}</em>
-              </p>
-            ) : (
-              <p className="action-done">{text("case.allDone")}</p>
-            )}
-
-            {feedback && (
-              <p className="feedback" role="status">
-                {feedback}
-                <button
-                  className="listen-link"
-                  type="button"
-                  onClick={() => void speak(feedback)}
-                  aria-label={text("action.listenLabel")}
-                >
-                  🔊
-                </button>
-              </p>
-            )}
           </section>
 
           <form className="answer-form" onSubmit={send}>
@@ -559,11 +539,10 @@ export default function Home() {
         </>
       )}
 
-      <footer>
-        <nav className="footer-links">
-          <a href="/case-card?workflow=bereavement">{common("sampleCaseCard")}</a>
-        </nav>
-      </footer>
     </main>
   );
+}
+
+export default function Home() {
+  return <Suspense fallback={null}><HomeContent /></Suspense>;
 }

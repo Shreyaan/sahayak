@@ -1,0 +1,35 @@
+import { NextResponse } from "next/server";
+import { isRateLimited } from "@/lib/rate-limit";
+import { clarifySearch } from "@/lib/search/clarify-search";
+import { searchWorkflows, searchWorkflowsInputSchema } from "@/lib/search/search-workflows";
+
+export const maxDuration = 30;
+
+export async function POST(request: Request) {
+  if (isRateLimited(request)) {
+    return NextResponse.json({ code: "RATE_LIMITED", error: "Too many requests. Please try again shortly." }, { status: 429 });
+  }
+
+  const parsed = searchWorkflowsInputSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ code: "INVALID_SEARCH", error: "Describe the problem in at least two characters." }, { status: 400 });
+  }
+
+  try {
+    const result = await searchWorkflows(parsed.data);
+    if (!result.shouldClarify) return NextResponse.json(result);
+
+    let clarificationQuestion: string;
+    try {
+      clarificationQuestion = await clarifySearch({ query: parsed.data.query, locale: parsed.data.locale });
+    } catch {
+      return NextResponse.json({
+        code: "CLARIFICATION_UNAVAILABLE",
+        error: "Chat clarification is unavailable right now.",
+      }, { status: 503 });
+    }
+    return NextResponse.json({ ...result, clarificationQuestion });
+  } catch {
+    return NextResponse.json({ code: "SEARCH_UNAVAILABLE", error: "Search is unavailable right now." }, { status: 503 });
+  }
+}

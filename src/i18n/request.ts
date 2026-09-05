@@ -1,11 +1,12 @@
 import { getRequestConfig } from "next-intl/server";
 import { getLocale } from "./locale-cookie";
+import { isLocale } from "@/lib/locale";
 
 /** One file per area, so separate parts of the UI never collide in one blob. */
 const namespaces = ["common", "citizen", "pages"] as const;
 
-export default getRequestConfig(async () => {
-  const locale = await getLocale();
+export default getRequestConfig(async ({ locale: requestedLocale }) => {
+  const locale = isLocale(requestedLocale) ? requestedLocale : await getLocale();
 
   const loaded = await Promise.all(
     namespaces.map(async (namespace) => [

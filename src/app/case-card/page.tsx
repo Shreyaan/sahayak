@@ -8,114 +8,22 @@ import {
   advanceDay,
   applyCitizenReply,
   currentNode,
-  getWorkflowDefinition,
+  getCaseWorkflowDefinition,
   isClearedBlocker,
   nodeNote,
   registerWorkflowDefinition,
-  startCase,
-  workflows,
-  type ArtifactId,
   type CaseSnapshot,
   type NodeState,
-  type WorkflowDefinition,
   type WorkflowNode,
 } from "@/lib/workflow";
 import { LanguageSwitcher } from "../language-switcher";
 import styles from "./case-card.module.css";
-
-const nodeStates: NodeState[] = ["pending", "needs-you", "verifying", "blocked", "done"];
-
-const artifactIds = Object.keys(artifactContent) as ArtifactId[];
+import type { CitizenOutcome } from "@/lib/citizen-outcomes";
+import type { TrustMetadata, WorkflowJurisdiction } from "@/lib/trust";
+import { TrustDisclosure } from "../trust-disclosure";
 
 function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function decodeBase64Url(raw: string): unknown {
-  const base64 = raw.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-  return JSON.parse(atob(padded));
-}
-
-/**
- * Reads `?case=` into a case snapshot. Only the workflow id, node ids, node
- * states, artifact ids and the day count are taken from the link; every title,
- * detail and note is read back from the journey's definition, so a shared link
- * can never put its own text on the Case Card. Returns null when anything
- * fails.
- */
-function readCaseParam(raw: string): CaseSnapshot | null {
-  let parsed: unknown;
-
-  try {
-    parsed = decodeBase64Url(raw);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null) return null;
-
-  const candidate = parsed as Record<string, unknown>;
-  if (typeof candidate.workflowId !== "string") return null;
-
-  const seed = getWorkflowDefinition(candidate.workflowId);
-  if (!seed || !Array.isArray(candidate.nodes) || candidate.nodes.length !== seed.nodes.length) return null;
-
-  const states = new Map<string, NodeState>();
-
-  for (const entry of candidate.nodes) {
-    if (typeof entry !== "object" || entry === null) return null;
-
-    const { id, state } = entry as Record<string, unknown>;
-    if (typeof id !== "string" || !seed.nodes.some((node) => node.id === id)) return null;
-    if (typeof state !== "string" || !nodeStates.includes(state as NodeState)) return null;
-    if (states.has(id)) return null;
-
-    states.set(id, state as NodeState);
-  }
-
-  if (states.size !== seed.nodes.length) return null;
-
-  const { day } = candidate;
-  if (typeof day !== "number" || !Number.isInteger(day) || day < 0 || day > 999) return null;
-
-  const artifacts = Array.isArray(candidate.artifacts)
-    ? candidate.artifacts.filter((id): id is ArtifactId =>
-        typeof id === "string" && artifactIds.includes(id as ArtifactId))
-    : [];
-
-  return {
-    workflowId: candidate.workflowId,
-    nodes: seed.nodes.map((node) => ({ id: node.id, state: states.get(node.id) ?? "pending" })),
-    artifacts: [...new Set(artifacts)],
-    day,
-  };
-}
-
-/**
- * Walks the real engine to the end of a journey, so the sample card shows the
- * same rejection, SLA breach and recovery the live demo produces. The replies
- * are engine input, not UI copy, so they stay in one language whatever the
- * reader's locale is.
- */
-function sampleCase(workflowId: string): CaseSnapshot {
-  let snapshot = startCase(workflowId);
-
-  for (let step = 0; step < 40; step += 1) {
-    const node = currentNode(snapshot);
-
-    if (node) {
-      // Declining the identity check is what triggers the mismatch trap.
-      const reply = node.type === "identity-compare" ? "नहीं" : "हाँ";
-      snapshot = applyCitizenReply(snapshot, reply).caseSnapshot;
-      continue;
-    }
-
-    if (!snapshot.nodes.some((entry) => entry.state === "verifying")) break;
-    snapshot = advanceDay(snapshot).caseSnapshot;
-  }
-
-  return snapshot;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -162,33 +70,59 @@ export default function CaseCardPage({
   const t = useTranslations("pages");
   const locale = useLocale() as Locale;
 
-  // Every journey — bundled or user-added — is registered client-side from the
-  // server list before anything renders, so a shared link can name any of them.
-  const [definitions, setDefinitions] = useState<WorkflowDefinition[] | null>(null);
+  const [outcomes, setOutcomes] = useState<CitizenOutcome[]>([]);
+  const [ownedSnapshot, setOwnedSnapshot] = useState<CaseSnapshot | null>(null);
+  const [caseLoadFailed, setCaseLoadFailed] = useState(false);
+  const [outcomesLoadFailed, setOutcomesLoadFailed] = useState(false);
+  const [ownedTrust, setOwnedTrust] = useState<TrustMetadata | null>(null);
+  const [ownedJurisdiction, setOwnedJurisdiction] = useState<WorkflowJurisdiction | null>(null);
+  const caseIdParam = firstValue(params.caseId);
 
   useEffect(() => {
+    if (!caseIdParam) return;
     let cancelled = false;
-
-    fetch("/api/workflows")
-      .then((response) => response.json())
-      .then(({ workflows: list }) => {
-        if (cancelled || !Array.isArray(list)) throw new Error("bad list");
-        for (const definition of list) registerWorkflowDefinition(definition);
-        setDefinitions(list);
+    fetch(`/api/cases/${encodeURIComponent(caseIdParam)}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "case unavailable");
+        return result;
+      })
+      .then(({ case: savedCase, definition, trust, jurisdiction }) => {
+        if (cancelled || !savedCase?.snapshot || !definition || !trust || !jurisdiction) return;
+        registerWorkflowDefinition(definition, savedCase.snapshot.workflowVersionId);
+        setOwnedSnapshot(savedCase.snapshot);
+        setOwnedTrust(trust);
+        setOwnedJurisdiction(jurisdiction);
       })
       .catch(() => {
-        if (!cancelled) setDefinitions(Object.values(workflows));
+        if (!cancelled) setCaseLoadFailed(true);
       });
+    return () => { cancelled = true; };
+  }, [caseIdParam]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(() => {
+    if (!caseIdParam || !ownedSnapshot) return;
+    let cancelled = false;
+    fetch(`/api/cases/${encodeURIComponent(caseIdParam)}/outcomes`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "outcomes unavailable");
+        return result;
+      })
+      .then(({ outcomes: list }) => {
+        if (!cancelled && Array.isArray(list)) setOutcomes(list);
+      })
+      .catch(() => {
+        if (!cancelled) setOutcomesLoadFailed(true);
+      });
+    return () => { cancelled = true; };
+  }, [caseIdParam, ownedSnapshot]);
 
-  const caseParam = firstValue(params.case);
-  const workflowParam = firstValue(params.workflow);
+  if (!caseIdParam) {
+    return <main className={styles.page}><a className={styles.back} href="/">{t("caseCard.back")}</a></main>;
+  }
 
-  if (!definitions) {
+  if (!ownedSnapshot && !caseLoadFailed) {
     return (
       <main className={styles.page}>
         <p role="status">{t("caseCard.loading")}</p>
@@ -196,16 +130,19 @@ export default function CaseCardPage({
     );
   }
 
-  const decoded = caseParam ? readCaseParam(caseParam) : null;
-  const sampleWorkflow = workflowParam && getWorkflowDefinition(workflowParam)
-    ? workflowParam
-    : "bereavement";
-  const snapshot = decoded ?? sampleCase(sampleWorkflow);
-  const unreadable = (caseParam !== undefined && decoded === null)
-    || (workflowParam !== undefined && !getWorkflowDefinition(workflowParam));
-  const isSample = decoded === null;
+  if (caseLoadFailed) {
+    return (
+      <main className={styles.page}>
+        <a className={styles.back} href="/">{t("caseCard.back")}</a>
+        <p className={styles.warning} role="alert">{t("caseCard.unreadable")}</p>
+      </main>
+    );
+  }
 
-  const seed = getWorkflowDefinition(snapshot.workflowId);
+  const snapshot = ownedSnapshot;
+  if (!snapshot) return null;
+
+  const seed = getCaseWorkflowDefinition(snapshot);
   if (!seed) return null;
   const stateById = new Map(snapshot.nodes.map((entry) => [entry.id, entry.state]));
   const steps = seed.nodes.map((node) => ({
@@ -222,6 +159,25 @@ export default function CaseCardPage({
   const complete = steps.every((step) => step.state === "done" || step.state === "pending")
     && steps.some((step) => step.node.type === "case-complete" && step.state === "done");
   const visits = seed.nodes.filter((node) => node.visit);
+  const outcomeLabels = locale === "hi" ? {
+    awareness: "यात्रा शुरू हुई",
+    worked: "बताए अनुसार हुआ",
+    different: "कुछ अलग हुआ",
+    stuck: "नागरिक अटक गया/गई",
+    skipped: "प्रतिक्रिया छोड़ी गई",
+    resolved: "समस्या हल होने की पुष्टि",
+  } : {
+    awareness: "Journey started",
+    worked: "Worked as shown",
+    different: "Something was different",
+    stuck: "Citizen got stuck",
+    skipped: "Feedback skipped",
+    resolved: "Resolution confirmed",
+  };
+  const formatTime = (value: string) => new Intl.DateTimeFormat(locale === "hi" ? "hi-IN" : "en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 
   /** A blocked or cleared node's reason, always read from the bundled seed. */
   const noteFor = (nodeId: string): string | undefined => {
@@ -232,8 +188,8 @@ export default function CaseCardPage({
   return (
     <main className={styles.page}>
       <div className={styles.toolbar}>
-        <a className={styles.back} href="/">
-          {t("caseCard.back")}
+        <a className={styles.back} href={`/?caseId=${encodeURIComponent(caseIdParam)}`}>
+          {t("caseCard.continue")}
         </a>
         <div className={styles.toolbarEnd}>
           <LanguageSwitcher />
@@ -243,12 +199,6 @@ export default function CaseCardPage({
         </div>
       </div>
 
-      {unreadable && (
-        <p className={styles.warning} role="status">
-          {t("caseCard.unreadable")}
-        </p>
-      )}
-
       <article className={styles.card}>
         <header className={styles.head}>
           <p className={styles.eyebrow}>{t("caseCard.eyebrow")}</p>
@@ -256,9 +206,10 @@ export default function CaseCardPage({
           <p className={styles.subtitle}>{translate(seed.subtitle, locale)}</p>
           <p className={styles.meta}>
             {t("caseCard.day", { day: snapshot.day })}
-            {isSample && ` · ${t("caseCard.sampleCase")}`}
           </p>
         </header>
+
+        {ownedTrust && ownedJurisdiction && <TrustDisclosure trust={ownedTrust} jurisdiction={ownedJurisdiction} locale={locale} />}
 
         <Section title={t("caseCard.completed.title")}>
           {done.length > 0 ? (
@@ -404,16 +355,36 @@ export default function CaseCardPage({
             <dd>{t("caseCard.status.referencesValue")}</dd>
           </dl>
         </Section>
+
+        {caseIdParam && (
+          <Section title={locale === "hi" ? "नतीजे और प्रमाण" : "Outcomes and evidence"}>
+            {outcomesLoadFailed ? (
+              <p className={styles.warning} role="alert">
+                {locale === "hi" ? "नतीजे अभी उपलब्ध नहीं हैं। फिर से कोशिश करें।" : "Outcome evidence is unavailable. Please try again."}
+              </p>
+            ) : outcomes.length > 0 ? (
+              <ol className={styles.steps}>
+                {outcomes.map((outcome) => {
+                  const step = outcome.stepId ? seed.nodes.find(({ id }) => id === outcome.stepId) : undefined;
+                  return (
+                    <li className={styles.step} key={outcome.id}>
+                      <strong>{outcomeLabels[outcome.kind]}</strong>
+                      <span>{formatTime(outcome.occurredAt)}</span>
+                      {step ? <span>{translate(step.title, locale)}</span> : null}
+                      {outcome.detail ? <em className={styles.note}>{outcome.detail}</em> : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p className={styles.empty}>
+                {locale === "hi" ? "अभी कोई नतीजा दर्ज नहीं है।" : "No outcome evidence has been recorded yet."}
+              </p>
+            )}
+          </Section>
+        )}
       </article>
 
-      <nav className={styles.samples}>
-        <p className={styles.eyebrow}>{t("caseCard.samples.title")}</p>
-        {definitions.map((definition) => (
-          <a key={definition.id} href={`/case-card?workflow=${definition.id}`}>
-            {translate(definition.title, locale)}
-          </a>
-        ))}
-      </nav>
     </main>
   );
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "citizen_cases" ADD COLUMN "owner_hash" text;

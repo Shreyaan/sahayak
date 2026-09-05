@@ -3,6 +3,7 @@ import { resetMemoryStore, store } from "@/lib/store";
 import { compileWorkflow, type WorkflowSpec } from "@/lib/custom-workflow";
 import { registerWorkflowDefinition, startCase } from "@/lib/workflow";
 import { POST } from "./route";
+import { browserOwner } from "@/lib/browser-owner";
 
 const originalKey = process.env.OPENROUTER_API_KEY;
 
@@ -17,6 +18,12 @@ function chatRequest(body: unknown, ip = crypto.randomUUID()) {
     headers: { "content-type": "application/json", "x-forwarded-for": ip },
     body: JSON.stringify(body),
   });
+}
+
+function ownedChatRequest(body: unknown, token: string) {
+  const request = chatRequest(body);
+  request.headers.set("cookie", `sahayak-browser=${token}`);
+  return request;
 }
 
 const bereavement = startCase("bereavement");
@@ -34,7 +41,7 @@ describe("POST /api/chat", () => {
     expect(body.caseSnapshot.nodes[1].state).toBe("needs-you");
   });
 
-  test("advances simulated time without calling the provider", async () => {
+  test("keeps idle simulated time still without calling the provider", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     mock.module("ai", () => ({
       isStepCount: () => () => false,
@@ -52,7 +59,7 @@ describe("POST /api/chat", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.caseSnapshot.day).toBe(1);
+    expect(body.caseSnapshot.day).toBe(0);
   });
 
   test.each([
@@ -141,6 +148,36 @@ describe("POST /api/chat", () => {
     expect(observedTimeout).toBe(8_000);
     expect(body.caseSnapshot.nodes[0].state).toBe("done");
     expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
+  });
+
+  test("redacts citizen identifiers before an ambiguous reply reaches the clerk", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    let prompt = "";
+    mock.module("@openrouter/ai-sdk-provider", () => ({
+      createOpenRouter: () => () => ({ modelId: "test-model" }),
+    }));
+    mock.module("ai", () => ({
+      isStepCount: () => () => false,
+      tool: (definition: unknown) => definition,
+      ToolLoopAgent: class {
+        async generate(options: { prompt: string }) {
+          prompt = options.prompt;
+          return { text: "ignored" };
+        }
+      },
+    }));
+
+    await POST(chatRequest({
+      message: "maybe ABCDE1234F account 1234567890123456 citizen@example.com",
+      caseSnapshot: bereavement,
+    }));
+
+    expect(prompt).toContain("[pan]");
+    expect(prompt).toContain("[account]");
+    expect(prompt).toContain("[email]");
+    expect(prompt).not.toContain("ABCDE1234F");
+    expect(prompt).not.toContain("1234567890123456");
+    expect(prompt).not.toContain("citizen@example.com");
   });
 
   test("clerk prose can never replace the authorized reply or invent policy", async () => {
@@ -267,8 +304,11 @@ describe("POST /api/chat", () => {
     resetMemoryStore();
 
     const caseId = crypto.randomUUID();
+    const token = crypto.randomUUID();
+    const ownedRequest = ownedChatRequest({}, token);
+    await store.saveCase(caseId, bereavement, browserOwner(ownedRequest).hash);
     const response = await POST(
-      chatRequest({ message: "हाँ", caseId, caseSnapshot: bereavement }),
+      ownedChatRequest({ message: "हाँ", caseId, caseSnapshot: bereavement }, token),
     );
 
     expect(response.status).toBe(200);
@@ -276,6 +316,43 @@ describe("POST /api/chat", () => {
     const stored = await store.listCases(10);
     expect(stored.map((entry) => entry.id)).toContain(caseId);
     expect(stored[0].snapshot.nodes[0].state).toBe("done");
+  });
+
+  test("does not acknowledge a transition that failed to persist", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    resetMemoryStore();
+    const caseId = crypto.randomUUID();
+    const token = crypto.randomUUID();
+    await store.saveCase(caseId, bereavement, browserOwner(ownedChatRequest({}, token)).hash);
+    const saveCase = store.saveCase;
+    store.saveCase = async () => { throw new Error("database offline"); };
+
+    try {
+      const response = await POST(ownedChatRequest(
+        { message: "हाँ", caseId, caseSnapshot: bereavement },
+        token,
+      ));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: "CASE_SAVE_FAILED" });
+    } finally {
+      store.saveCase = saveCase;
+    }
+  });
+
+  test("a guessed case id cannot update another browser's journey", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    resetMemoryStore();
+    const caseId = crypto.randomUUID();
+    const ownerToken = crypto.randomUUID();
+    await store.saveCase(caseId, bereavement, browserOwner(ownedChatRequest({}, ownerToken)).hash);
+
+    const response = await POST(ownedChatRequest(
+      { message: "हाँ", caseId, caseSnapshot: bereavement },
+      crypto.randomUUID(),
+    ));
+
+    expect(response.status).toBe(404);
+    expect((await store.getCase(caseId))?.snapshot).toEqual(bereavement);
   });
 
   test("runs a user-added workflow through the same validation and engine", async () => {
