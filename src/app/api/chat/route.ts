@@ -7,17 +7,19 @@ import { defaultLocale, locales, t, type Localized, type Locale } from "@/lib/lo
 import { isRateLimited } from "@/lib/rate-limit";
 import { store } from "@/lib/store";
 import {
-  advanceDay,
   applyIntent,
+  artifactIdSchema,
   currentNode,
   getWorkflowDefinition,
   type CaseSnapshot,
   registerWorkflowDefinition,
+  recordDeskReport,
 } from "@/lib/workflow";
 import { resolveWorkflow } from "@/lib/workflow-registry";
 import { existingBrowserOwnerHash } from "@/lib/browser-owner";
 import { redactCitizenText } from "@/lib/citizen-outcomes";
 import { getWorkflowVersion } from "@/lib/workflow-version";
+import { artifactDraftSchema } from "@/lib/artifact-drafts";
 
 export const maxDuration = 30;
 
@@ -39,28 +41,44 @@ const caseSnapshotSchema = z.object({
       startedDay: z.number().int().min(0).max(400).optional(),
     }).strict(),
   ).max(20),
-  artifacts: z.array(
-    z.enum([
-      "correction-declaration",
-      "bank-letter",
-      "rti-draft",
-      "npci-checklist",
-      "escalation-draft",
-    ]),
-  ).max(10),
+  artifacts: z.array(artifactIdSchema).max(10),
+  reports: z.array(z.object({
+    stepId: z.string().trim().min(1).max(128),
+    optionId: z.string().trim().min(1).max(64),
+    response: z.string().trim().min(1).max(2_000),
+    responseDate: z.iso.date(),
+    referenceNumber: z.string().trim().min(1).max(160).optional(),
+    evidence: z.string().trim().min(1).max(1_000).optional(),
+    recordedAt: z.iso.datetime(),
+    synthetic: z.boolean(),
+  }).strict()).max(40).optional(),
+  artifactDrafts: z.object({
+    "escalation-draft": artifactDraftSchema.optional(),
+  }).strict().optional(),
   day: z.number().int().min(0).max(400),
 }).strict();
 
+const deskResponseSchema = z.object({
+  optionId: z.string().trim().min(1).max(64),
+  response: z.string().trim().min(1).max(2_000),
+  responseDate: z.iso.date(),
+  referenceNumber: z.string().trim().min(1).max(160).optional(),
+  evidence: z.string().trim().min(1).max(1_000).optional(),
+}).strict();
+
 const requestSchema = z.object({
-  action: z.enum(["reply", "advance-day"]).default("reply"),
+  action: z.enum(["reply", "record-desk-response"]).default("reply"),
   /** A labeled button answers with its meaning directly; free text is read. */
   intent: z.enum(["affirmative", "negative"]).optional(),
   message: z.string().trim().max(2_000).default(""),
   locale: z.enum(locales).default(defaultLocale),
   caseId: z.string().trim().max(64).optional(),
   caseSnapshot: caseSnapshotSchema,
+  deskResponse: deskResponseSchema.optional(),
 }).strict().refine(
-  ({ action, message, intent }) => action === "advance-day" || message.length > 0 || intent !== undefined,
+  ({ action, message, intent, deskResponse }) => action === "record-desk-response"
+    ? deskResponse !== undefined
+    : message.length > 0 || intent !== undefined,
   { message: "A reply needs a message." },
 );
 
@@ -125,14 +143,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Message and case are required." }, { status: 400 });
   }
 
-  const { action, intent: statedIntent, message, locale, caseId, caseSnapshot: submittedSnapshot } = parsed.data;
+  const { action, intent: statedIntent, message, locale, caseId, caseSnapshot: submittedSnapshot, deskResponse } = parsed.data;
 
   let caseSnapshot = submittedSnapshot;
+  let caseOwnerHash: string | undefined;
   if (caseId) {
     const ownerHash = existingBrowserOwnerHash(request);
     if (!ownerHash) {
       return NextResponse.json({ code: "CASE_ACCESS_REQUIRED", error: "This case belongs to another browser." }, { status: 401 });
     }
+    caseOwnerHash = ownerHash;
     try {
       const stored = await store.getCase(caseId, ownerHash);
       if (!stored) return NextResponse.json({ code: "CASE_NOT_FOUND", error: "That case was not found." }, { status: 404 });
@@ -163,14 +183,25 @@ export async function POST(request: Request) {
   const localize = ({ caseSnapshot: next, reply }: { caseSnapshot: CaseSnapshot; reply: Localized }) =>
     ({ caseSnapshot: next, reply: t(reply, locale) });
 
-  if (action === "advance-day") {
-    const result = localize(advanceDay(caseSnapshot));
-    if (caseId) {
-      try {
-        await store.saveCase(caseId, result.caseSnapshot);
-      } catch {
-        return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The case could not be saved. Please try again." }, { status: 503 });
-      }
+  if (action === "record-desk-response") {
+    if (!caseId || !deskResponse) {
+      return NextResponse.json({ code: "CASE_REQUIRED", error: "A saved case is required to record a response." }, { status: 400 });
+    }
+
+    let result;
+    try {
+      result = localize(recordDeskReport(caseSnapshot, {
+        ...deskResponse,
+        recordedAt: new Date().toISOString(),
+      }));
+    } catch {
+      return NextResponse.json({ code: "DESK_RESPONSE_NOT_ALLOWED", error: "This step cannot accept that response." }, { status: 409 });
+    }
+
+    try {
+      await store.saveCaseProgress(caseId, result.caseSnapshot, caseOwnerHash);
+    } catch {
+      return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The response could not be saved. Please try again." }, { status: 503 });
     }
     return NextResponse.json(result);
   }
@@ -201,7 +232,7 @@ export async function POST(request: Request) {
   // Persist the case so the citizen can come back to exactly this state.
   if (caseId) {
     try {
-      await store.saveCase(caseId, result.caseSnapshot);
+      await store.saveCaseProgress(caseId, result.caseSnapshot, caseOwnerHash);
     } catch {
       return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The case could not be saved. Please try again." }, { status: 503 });
     }

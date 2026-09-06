@@ -36,5 +36,10 @@ export async function listPublishedWorkflowVersions() {
     .where(eq(workflowVersionsTable.status, "published"))
     .orderBy(asc(workflowVersionsTable.workflowId), asc(workflowVersionsTable.version));
 
-  return versions.map((version) => validateTrust(version)!);
+  const latest = new Map<string, (typeof versions)[number]>();
+  for (const version of versions) {
+    const current = latest.get(version.workflowId);
+    if (!current || version.version > current.version) latest.set(version.workflowId, version);
+  }
+  return [...latest.values()].map((version) => validateTrust(version)!);
 }

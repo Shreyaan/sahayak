@@ -6,11 +6,12 @@ import { trustMetadataSchema } from "@/lib/trust";
 const seeds = [
   {
     workflowId: "bereavement" as const,
-    workflowVersionId: "bereavement-v1",
+    workflowVersionId: "bereavement-v2",
+    version: 2,
     trust: {
-      provenance: "official-source-reviewed",
-      reviewDate: "2026-09-04",
-      verificationMethod: "Seeded prototype guidance checked against public official sources.",
+      provenance: "legacy-verification-pending",
+      reviewDate: null,
+      verificationMethod: "Synthetic secondary stress-test workflow. Expert verification and real-world outcome evidence are still pending.",
       currentExpertSupportCount: 0,
       hasUnresolvedDisagreement: false,
       sourceLinks: [],
@@ -22,11 +23,12 @@ const seeds = [
   },
   {
     workflowId: "scholarship" as const,
-    workflowVersionId: "scholarship-v1",
+    workflowVersionId: "scholarship-v4",
+    version: 4,
     trust: {
-      provenance: "official-source-reviewed",
-      reviewDate: "2026-09-04",
-      verificationMethod: "Seeded prototype guidance checked against public official sources.",
+      provenance: "legacy-verification-pending",
+      reviewDate: null,
+      verificationMethod: "Synthetic MVP workflow. Expert verification and real-world outcome evidence are still pending.",
       currentExpertSupportCount: 0,
       hasUnresolvedDisagreement: false,
       sourceLinks: [
@@ -50,12 +52,12 @@ export async function seedPublishedWorkflows(): Promise<void> {
     await db.insert(workflowVersionsTable).values({
       id: seed.workflowVersionId,
       workflowId: seed.workflowId,
-      version: 1,
+      version: seed.version,
       status: "published",
       scope: "central",
       definition,
       trust: trustMetadataSchema.parse(seed.trust),
-      publishedAt: new Date("2026-09-04T00:00:00.000Z"),
+      publishedAt: new Date("2026-09-06T00:00:00.000Z"),
     }).onConflictDoNothing();
 
     for (const locale of ["hi", "en"] as const) {

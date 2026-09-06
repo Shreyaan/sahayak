@@ -71,7 +71,7 @@ export function CitizenHome({
     return <button key={stored.id} className="group grid min-w-0 gap-1.5 rounded-2xl border border-[var(--line)] bg-white p-4 text-left text-[var(--ink)] transition-colors hover:border-[var(--green)]" type="button" onClick={() => onResume(stored.id)}>
       <strong className="text-base">{definition ? translate(definition.title, locale) : stored.workflowId}</strong>
       {activeDefinition && <span className="leading-snug text-[#536059]">{text("cases.current")}: {translate(activeDefinition.title, locale)}</span>}
-      <small className="text-[#768079]">{text("cases.progress", { completed, total })} · {text("cases.day", { day: stored.snapshot.day })}</small>
+      <small className="text-[#768079]">{text("cases.progress", { completed, total })}</small>
       <b className="mt-1.5 text-sm text-[var(--green)] group-hover:underline">{text("cases.resume")} →</b>
     </button>;
   }
@@ -119,6 +119,7 @@ export function CitizenHome({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-extrabold text-[var(--green)]">{jurisdictionLabel(item.jurisdiction, locale)}</span>
             {item.id === "scholarship" && <span className="rounded-full bg-[#fff1cf] px-2 py-0.5 text-[.65rem] font-extrabold uppercase tracking-wide text-[#79540d]">{text("library.flagship")}</span>}
+            {(item.id === "scholarship" || item.id === "bereavement") && <span className="rounded-full bg-[#f1e9dc] px-2 py-0.5 text-[.65rem] font-extrabold uppercase tracking-wide text-[#735c37]">{locale === "hi" ? "कृत्रिम उदाहरण" : "Synthetic example"}</span>}
           </div>
           <h3 className="mt-2 text-xl font-bold">{translate(item.definition.title, locale)}</h3>
           <p className="mt-1 leading-snug text-[#536059]">{translate(item.definition.subtitle, locale)}</p>

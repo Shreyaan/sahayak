@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { artifactContent } from "./artifacts";
+import { artifactContent, renderArtifactBody } from "./artifacts";
 import { locales, t } from "./locale";
 import {
   advanceDay,
   applyCitizenReply,
+  recordDeskReport,
   currentNode,
   isClearedBlocker,
   nodeNote,
@@ -32,9 +33,17 @@ function confirmUntil(caseSnapshot: CaseSnapshot, nodeId: string): CaseSnapshot 
   let snapshot = caseSnapshot;
 
   for (let guard = 0; guard < 40 && currentNode(snapshot)?.id !== nodeId; guard += 1) {
-    snapshot = currentNode(snapshot)
-      ? applyCitizenReply(snapshot, "हाँ").caseSnapshot
-      : advanceDay(snapshot).caseSnapshot;
+    const open = currentNode(snapshot);
+    snapshot = open?.report
+      ? recordDeskReport(snapshot, {
+          optionId: open.report.options[0]!.id,
+          response: "Synthetic test response",
+          responseDate: "2026-09-05",
+          recordedAt: "2026-09-06T10:00:00.000Z",
+        }).caseSnapshot
+      : open
+        ? applyCitizenReply(snapshot, "हाँ").caseSnapshot
+        : advanceDay(snapshot).caseSnapshot;
   }
 
   return snapshot;
@@ -88,9 +97,17 @@ describe("every user-facing string is bilingual", () => {
     let snapshot = startCase(workflowId);
 
     for (let guard = 0; guard < 40; guard += 1) {
-      const result = currentNode(snapshot)
-        ? applyCitizenReply(snapshot, "हाँ")
-        : advanceDay(snapshot);
+      const open = currentNode(snapshot);
+      const result = open?.report
+        ? recordDeskReport(snapshot, {
+            optionId: open.report.options[0]!.id,
+            response: "Synthetic test response",
+            responseDate: "2026-09-05",
+            recordedAt: "2026-09-06T10:00:00.000Z",
+          })
+        : open
+          ? applyCitizenReply(snapshot, "हाँ")
+          : advanceDay(snapshot);
 
       expect(missingTranslations(result.reply, "reply")).toEqual([]);
       snapshot = result.caseSnapshot;
@@ -201,6 +218,80 @@ describe("applyCitizenReply", () => {
   });
 });
 
+describe("citizen-reported desk responses", () => {
+  test("records the citizen's evidence before opening the supported recovery path", () => {
+    const atTrace = applyCitizenReply(
+      confirmUntil(startCase("scholarship"), "pfms-trace"),
+      "yes",
+    ).caseSnapshot;
+
+    const result = recordDeskReport(atTrace, {
+      optionId: "npci-missing",
+      response: "The PFMS desk said the bank returned the payment because NPCI mapping was missing.",
+      responseDate: "2026-09-05",
+      referenceNumber: "PFMS-DEMO-44",
+      evidence: "Fictional screenshot noted for the demo.",
+      recordedAt: "2026-09-06T10:00:00.000Z",
+    });
+
+    expect(stateOf(result.caseSnapshot, "pfms-trace")).toBe("blocked");
+    expect(stateOf(result.caseSnapshot, "bank-seeding")).toBe("needs-you");
+    expect(result.caseSnapshot.reports).toEqual([{
+      stepId: "pfms-trace",
+      optionId: "npci-missing",
+      response: "The PFMS desk said the bank returned the payment because NPCI mapping was missing.",
+      responseDate: "2026-09-05",
+      referenceNumber: "PFMS-DEMO-44",
+      evidence: "Fictional screenshot noted for the demo.",
+      recordedAt: "2026-09-06T10:00:00.000Z",
+      synthetic: true,
+    }]);
+  });
+
+  test("records an unsupported response without inventing a recovery path", () => {
+    const atTrace = applyCitizenReply(
+      confirmUntil(startCase("scholarship"), "pfms-trace"),
+      "yes",
+    ).caseSnapshot;
+
+    const result = recordDeskReport(atTrace, {
+      optionId: "different",
+      response: "The desk gave a different reason.",
+      responseDate: "2026-09-05",
+      recordedAt: "2026-09-06T10:00:00.000Z",
+    });
+
+    expect(stateOf(result.caseSnapshot, "pfms-trace")).toBe("needs-you");
+    expect(stateOf(result.caseSnapshot, "bank-seeding")).toBe("pending");
+    expect(t(result.reply, "en")).toContain("recorded");
+    expect(t(result.reply, "en")).not.toContain("NPCI");
+  });
+
+  test("renders a grievance draft from the citizen's confirmed case record", () => {
+    const snapshot = {
+      ...startCase("scholarship"),
+      reports: [{
+        stepId: "pfms-trace",
+        optionId: "npci-missing",
+        response: "Payment was returned because NPCI mapping was missing.",
+        responseDate: "2026-09-05",
+        referenceNumber: "PFMS-DEMO-44",
+        evidence: "Acknowledgement screenshot",
+        recordedAt: "2026-09-06T10:00:00.000Z",
+        synthetic: true,
+      }],
+    };
+
+    const body = renderArtifactBody("escalation-draft", snapshot, "en").join(" ");
+
+    expect(body).toContain("Payment was returned because NPCI mapping was missing.");
+    expect(body).toContain("5 Sep 2026");
+    expect(body).toContain("PFMS-DEMO-44");
+    expect(body).toContain("Acknowledgement screenshot");
+    expect(body).toContain("has not submitted");
+  });
+});
+
 describe("advanceDay", () => {
   test("does not move time when no desk verification is pending", () => {
     const freshCase = startCase("scholarship");
@@ -211,41 +302,6 @@ describe("advanceDay", () => {
     expect(currentNode(result.caseSnapshot)?.id).toBe("nsp-status");
   });
 
-  test("holds a desk verification until its own clock expires", () => {
-    const submitted = applyCitizenReply(
-      confirmUntil(startCase("bereavement"), "bank-claim"),
-      "हाँ",
-    ).caseSnapshot;
-
-    expect(stateOf(submitted, "bank-claim")).toBe("verifying");
-
-    const afterOneDay = advanceDay(submitted).caseSnapshot;
-    expect(stateOf(afterOneDay, "bank-claim")).toBe("verifying");
-
-    const afterTwoDays = advanceDay(afterOneDay).caseSnapshot;
-    expect(stateOf(afterTwoDays, "bank-claim")).toBe("blocked");
-    expect(stateOf(afterTwoDays, "bank-claim-fix")).toBe("needs-you");
-  });
-
-  test("each SLA clock runs from when its own verification started", () => {
-    const atEpfo = confirmUntil(startCase("bereavement"), "epfo-claim");
-    const submitted = applyCitizenReply(atEpfo, "हाँ").caseSnapshot;
-
-    expect(submitted.day).toBeGreaterThanOrEqual(2);
-    expect(advanceDay(submitted).caseSnapshot.nodes.find((n) => n.id === "epfo-claim")?.state)
-      .toBe("verifying");
-
-    const breached = advanceDay(advanceDay(advanceDay(submitted).caseSnapshot).caseSnapshot)
-      .caseSnapshot;
-    expect(stateOf(breached, "epfo-claim")).toBe("blocked");
-    expect(stateOf(breached, "rti-draft")).toBe("needs-you");
-  });
-
-  test("the same journey always produces the same rejection and breach", () => {
-    const runOnce = () => confirmUntil(startCase("bereavement"), "rti-draft");
-
-    expect(runOnce()).toEqual(runOnce());
-  });
 });
 
 describe("complete journeys", () => {
@@ -266,37 +322,38 @@ describe("complete journeys", () => {
   test("scholarship reuses the same engine through its bounce and breach", () => {
     const finished = confirmUntil(startCase("scholarship"), "case-done");
 
-    // Both were blocked in flight — the NPCI bounce and the SLA breach — and both
-    // were closed by their recovery step, which the Case Card reports as cleared.
+    // Both citizen-reported setbacks were closed by their supported recovery step.
     expect(isClearedBlocker(finished, "pfms-trace")).toBe(true);
     expect(isClearedBlocker(finished, "verify-again")).toBe(true);
     expect(t(nodeNote(finished, "pfms-trace")!, "hi")).toContain("NPCI");
     expect(t(nodeNote(finished, "pfms-trace")!, "en")).toContain("NPCI");
-    expect(t(nodeNote(finished, "verify-again")!, "hi")).toContain("समय-सीमा");
-    expect(t(nodeNote(finished, "verify-again")!, "en")).toContain("Time limit");
+    expect(t(nodeNote(finished, "verify-again")!, "hi")).toContain("नागरिक");
+    expect(t(nodeNote(finished, "verify-again")!, "en")).toContain("Citizen-reported");
     expect(finished.artifacts).toEqual(["npci-checklist", "escalation-draft"]);
   });
 });
 
 describe("recovery closes what it recovered from", () => {
   test("a rejected bank claim is closed once its fix is confirmed, keeping the reason", () => {
-    const submitted = applyCitizenReply(
-      confirmUntil(startCase("bereavement"), "bank-claim"),
-      "हाँ",
-    ).caseSnapshot;
-    const rejected = advanceDay(advanceDay(submitted).caseSnapshot).caseSnapshot;
+    const atBank = confirmUntil(startCase("bereavement"), "bank-claim");
+    const rejected = recordDeskReport(atBank, {
+      optionId: "signature-mismatch",
+      response: "The bank said the signature did not match.",
+      responseDate: "2026-09-05",
+      recordedAt: "2026-09-06T10:00:00.000Z",
+    }).caseSnapshot;
 
     expect(stateOf(rejected, "bank-claim")).toBe("blocked");
-    expect(t(nodeNote(rejected, "bank-claim")!, "hi")).toContain("अस्वीकृति");
-    expect(t(nodeNote(rejected, "bank-claim")!, "en")).toContain("Rejection");
+    expect(t(nodeNote(rejected, "bank-claim")!, "hi")).toContain("नागरिक");
+    expect(t(nodeNote(rejected, "bank-claim")!, "en")).toContain("Citizen-reported");
     expect(isClearedBlocker(rejected, "bank-claim")).toBe(false);
 
     const recovered = applyCitizenReply(rejected, "हाँ").caseSnapshot;
 
     expect(stateOf(recovered, "bank-claim")).toBe("done");
     expect(isClearedBlocker(recovered, "bank-claim")).toBe(true);
-    expect(t(nodeNote(recovered, "bank-claim")!, "hi")).toContain("अस्वीकृति");
-    expect(t(nodeNote(recovered, "bank-claim")!, "en")).toContain("Rejection");
+    expect(t(nodeNote(recovered, "bank-claim")!, "hi")).toContain("नागरिक");
+    expect(t(nodeNote(recovered, "bank-claim")!, "en")).toContain("Citizen-reported");
   });
 
   test("a declined name check is closed once the correction is added", () => {

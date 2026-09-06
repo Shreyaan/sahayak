@@ -7,7 +7,7 @@ import common from "../../messages/en/common.json";
 import citizen from "../../messages/en/citizen.json";
 import pages from "../../messages/en/pages.json";
 import { startCase, workflows } from "@/lib/workflow";
-import Home from "./page";
+import Home, { transitionFeedback } from "./page";
 
 const caseId = "11111111-1111-4111-8111-111111111111";
 const snapshot = startCase("scholarship");
@@ -24,20 +24,20 @@ function response(body: unknown, status = 200) {
   });
 }
 
-function mockCaseApi() {
+function mockCaseApi(caseSnapshot = snapshot) {
   globalThis.fetch = mock((input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : new URL(input.url).pathname;
 
     if (url === `/api/cases/${caseId}`) {
       return Promise.resolve(response({
-        case: { id: caseId, snapshot },
+        case: { id: caseId, snapshot: caseSnapshot },
         definition: workflows.scholarship,
       }));
     }
 
     if (url === "/api/cases") {
       return Promise.resolve(response({
-        cases: [{ id: caseId, workflowId: "scholarship", snapshot, updatedAt: "2026-09-05T00:00:00.000Z" }],
+        cases: [{ id: caseId, workflowId: "scholarship", snapshot: caseSnapshot, updatedAt: "2026-09-05T00:00:00.000Z" }],
       }));
     }
 
@@ -73,7 +73,7 @@ describe("citizen case continuity", () => {
     renderHome({ searchParams: `?caseId=${caseId}` });
 
     expect(await screen.findByRole("heading", { name: "Understand the NSP status" })).not.toBeNull();
-    expect(screen.getByText("Day 0")).not.toBeNull();
+    expect(screen.getByText("Synthetic example journey and records")).not.toBeNull();
   });
 
   test("resuming a saved case records its id in the URL", async () => {
@@ -111,7 +111,18 @@ describe("citizen case continuity", () => {
 });
 
 describe("citizen action priority", () => {
-  test("shows the current action before history and disables idle demo time", async () => {
+  test("does not attach the previous step's success message to the next action", () => {
+    const nextSnapshot = {
+      ...snapshot,
+      nodes: snapshot.nodes.map((node) => node.id === "nsp-status"
+        ? { ...node, state: "done" as const }
+        : node.id === "pfms-trace" ? { ...node, state: "needs-you" as const } : node),
+    };
+
+    expect(transitionFeedback("The previous response was recorded.", "nsp-status", nextSnapshot)).toBe("");
+  });
+
+  test("shows the current action before history without a simulated-time control", async () => {
     mockCaseApi();
     renderHome({ searchParams: `?caseId=${caseId}` });
 
@@ -122,6 +133,21 @@ describe("citizen action priority", () => {
     expect(actionPanel).not.toBeNull();
     expect(timeline).not.toBeNull();
     expect(actionPanel!.compareDocumentPosition(timeline!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Move a day ahead" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Move a day ahead" })).toBeNull();
+    expect(screen.getByText("Synthetic example journey and records")).not.toBeNull();
+  });
+
+  test("shows earned documents directly in the journey", async () => {
+    mockCaseApi({
+      ...snapshot,
+      artifacts: ["npci-checklist", "escalation-draft"],
+    });
+    renderHome({ searchParams: `?caseId=${caseId}` });
+
+    expect(await screen.findByRole("heading", { name: "Your documents" })).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Download bank seeding checklist" }).getAttribute("href"))
+      .toBe(`/api/cases/${caseId}/artifacts/npci-checklist?locale=en`);
+    expect(screen.getByRole("heading", { name: "Prepare your grievance" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Generate grievance with AI" })).not.toBeNull();
   });
 });

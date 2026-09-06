@@ -43,6 +43,20 @@ let warnedAboutSemanticSimilarity = false;
 export async function searchWorkflows(input: SearchWorkflowsInput): Promise<SearchWorkflowsResponse> {
   const request = searchWorkflowsInputSchema.parse(input);
   const db = getDatabase();
+  const publishedVersions = await db.select({
+    id: workflowVersionsTable.id,
+    workflowId: workflowVersionsTable.workflowId,
+    version: workflowVersionsTable.version,
+  }).from(workflowVersionsTable).where(eq(workflowVersionsTable.status, "published"));
+  const latestByWorkflow = new Map<string, { id: string; version: number }>();
+  for (const version of publishedVersions) {
+    const current = latestByWorkflow.get(version.workflowId);
+    if (!current || version.version > current.version) latestByWorkflow.set(version.workflowId, version);
+  }
+  const currentVersionIds = [...latestByWorkflow.values()].map(({ id }) => id);
+  if (currentVersionIds.length === 0) {
+    return { results: [], needsLocation: false, shouldClarify: true };
+  }
   const allowedScope = request.districtCode
     ? sql`(
         ${workflowVersionsTable.scope} = 'central'
@@ -52,7 +66,11 @@ export async function searchWorkflows(input: SearchWorkflowsInput): Promise<Sear
     : request.stateCode
       ? sql`(${workflowVersionsTable.scope} = 'central' OR (${workflowVersionsTable.scope} = 'state' AND ${workflowVersionsTable.stateCode} = ${request.stateCode}))`
       : eq(workflowVersionsTable.scope, "central");
-  const published = and(eq(workflowVersionsTable.status, "published"), allowedScope);
+  const published = and(
+    eq(workflowVersionsTable.status, "published"),
+    inArray(workflowVersionsTable.id, currentVersionIds),
+    allowedScope,
+  );
 
   const semanticRowsPromise = embedSearchQuery(request.query)
     .then((embedding) => db

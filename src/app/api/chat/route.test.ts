@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { resetMemoryStore, store } from "@/lib/store";
 import { compileWorkflow, type WorkflowSpec } from "@/lib/custom-workflow";
-import { registerWorkflowDefinition, startCase } from "@/lib/workflow";
+import { applyCitizenReply, registerWorkflowDefinition, startCase } from "@/lib/workflow";
 import { POST } from "./route";
 import { browserOwner } from "@/lib/browser-owner";
 
@@ -41,7 +41,7 @@ describe("POST /api/chat", () => {
     expect(body.caseSnapshot.nodes[1].state).toBe("needs-you");
   });
 
-  test("keeps idle simulated time still without calling the provider", async () => {
+  test("rejects client requests to advance simulated time", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     mock.module("ai", () => ({
       isStepCount: () => () => false,
@@ -58,8 +58,8 @@ describe("POST /api/chat", () => {
     );
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.caseSnapshot.day).toBe(0);
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Message and case are required.");
   });
 
   test.each([
@@ -318,14 +318,79 @@ describe("POST /api/chat", () => {
     expect(stored[0].snapshot.nodes[0].state).toBe("done");
   });
 
+  test("continues a saved case without losing its generated grievance", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    resetMemoryStore();
+    const caseId = crypto.randomUUID();
+    const token = crypto.randomUUID();
+    const snapshot = {
+      ...startCase("scholarship", "scholarship-v4"),
+      artifacts: ["escalation-draft" as const],
+      artifactDrafts: {
+        "escalation-draft": {
+          schemaVersion: "scholarship-grievance-v1" as const,
+          artifactId: "escalation-draft" as const,
+          fields: { applicantName: "Asha", applicationId: "APP-1", contact: "", bankAccountLastFour: "", destination: "NSP portal" },
+          document: {
+            en: { recipient: "NSP portal", subject: "Payment missing", body: "Payment was not credited.", request: "Please reply in writing.", enclosures: "" },
+            hi: { recipient: "एनएसपी पोर्टल", subject: "भुगतान नहीं मिला", body: "भुगतान जमा नहीं हुआ।", request: "कृपया लिखित उत्तर दें।", enclosures: "" },
+          },
+          generatedAt: "2026-09-06T10:00:00.000Z",
+          model: "openai/gpt-5.6-luna",
+        },
+      },
+    };
+    await store.saveCase(caseId, snapshot, browserOwner(ownedChatRequest({}, token)).hash);
+
+    const response = await POST(ownedChatRequest({ message: "हाँ", caseId, caseSnapshot: snapshot }, token));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.caseSnapshot.artifactDrafts["escalation-draft"].document.en.subject).toBe("Payment missing");
+  });
+
+  test("persists a structured citizen-reported desk response", async () => {
+    resetMemoryStore();
+    const caseId = crypto.randomUUID();
+    const token = crypto.randomUUID();
+    let snapshot = startCase("scholarship", "scholarship-v4");
+    snapshot = applyCitizenReply(snapshot, "yes").caseSnapshot;
+    snapshot = applyCitizenReply(snapshot, "yes").caseSnapshot;
+    await store.saveCase(caseId, snapshot, browserOwner(ownedChatRequest({}, token)).hash);
+
+    const response = await POST(ownedChatRequest({
+      action: "record-desk-response",
+      caseId,
+      caseSnapshot: snapshot,
+      locale: "en",
+      deskResponse: {
+        optionId: "npci-missing",
+        response: "The PFMS desk reported that NPCI mapping was missing.",
+        responseDate: "2026-09-05",
+        referenceNumber: "PFMS-DEMO-44",
+        evidence: "Fictional demo screenshot",
+      },
+    }, token));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.caseSnapshot.reports[0]).toMatchObject({
+      stepId: "pfms-trace",
+      referenceNumber: "PFMS-DEMO-44",
+      synthetic: true,
+    });
+    expect((await store.getCase(caseId))?.snapshot.reports?.[0]?.response)
+      .toBe("The PFMS desk reported that NPCI mapping was missing.");
+  });
+
   test("does not acknowledge a transition that failed to persist", async () => {
     delete process.env.OPENROUTER_API_KEY;
     resetMemoryStore();
     const caseId = crypto.randomUUID();
     const token = crypto.randomUUID();
     await store.saveCase(caseId, bereavement, browserOwner(ownedChatRequest({}, token)).hash);
-    const saveCase = store.saveCase;
-    store.saveCase = async () => { throw new Error("database offline"); };
+    const saveCaseProgress = store.saveCaseProgress;
+    store.saveCaseProgress = async () => { throw new Error("database offline"); };
 
     try {
       const response = await POST(ownedChatRequest(
@@ -335,7 +400,7 @@ describe("POST /api/chat", () => {
       expect(response.status).toBe(503);
       expect(await response.json()).toMatchObject({ code: "CASE_SAVE_FAILED" });
     } finally {
-      store.saveCase = saveCase;
+      store.saveCaseProgress = saveCaseProgress;
     }
   });
 

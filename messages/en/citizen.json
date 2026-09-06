@@ -65,8 +65,8 @@
     "demoTime": "Demo time",
     "advanceDay": "Move a day ahead",
     "history": "Journey history",
-    "waiting": "A desk is checking your case. Press “Move a day ahead” to move time forward.",
-    "waitingNote": "Replies usually arrive within a few days.",
+    "waiting": "This older synthetic example case is waiting for a citizen-recorded update.",
+    "waitingNote": "Sahayak does not receive a desk or portal response by itself.",
     "artifacts": "Papers created for you",
     "openCaseCard": "Open Case Card",
     "startOver": "Start over",
@@ -75,7 +75,7 @@
   "state": {
     "pending": "Pending",
     "needs-you": "Needs you",
-    "verifying": "Verifying",
+    "verifying": "Waiting for your update",
     "blocked": "Blocked",
     "done": "Done"
   },

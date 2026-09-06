@@ -4,6 +4,10 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { getLocale } from "@/i18n/locale-cookie";
 import { Providers } from "./providers";
 import "./globals.css";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Sahayak",
@@ -14,7 +18,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = await getLocale();
 
   return (
-    <html lang={locale}>
+    <html lang={locale} className={cn("font-sans", geist.variable)}>
       <body>
         <NextIntlClientProvider>
           <NuqsAdapter>

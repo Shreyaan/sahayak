@@ -1,5 +1,6 @@
 import { readIntent, type Intent } from "./intent";
 import type { Localized } from "./locale";
+import type { ArtifactDraft } from "./artifact-drafts";
 import { z } from "zod";
 
 /**
@@ -19,14 +20,19 @@ export type StepType =
   | "benefit-credit"
   | "case-complete";
 
-export type NodeState = "pending" | "needs-you" | "verifying" | "blocked" | "done";
+export type NodeState =
+  "pending" | "needs-you" | "verifying" | "blocked" | "done";
 
-export type ArtifactId =
-  | "correction-declaration"
-  | "bank-letter"
-  | "rti-draft"
-  | "npci-checklist"
-  | "escalation-draft";
+export const artifactIds = [
+  "correction-declaration",
+  "bank-letter",
+  "rti-draft",
+  "npci-checklist",
+  "escalation-draft",
+] as const;
+
+export const artifactIdSchema = z.enum(artifactIds);
+export type ArtifactId = z.infer<typeof artifactIdSchema>;
 
 export type VisitCard = {
   office: Localized;
@@ -57,6 +63,24 @@ type Outcome = {
   note?: Localized;
 };
 
+export type DeskReportOption = {
+  id: string;
+  label: Localized;
+  reply: Localized;
+  outcome?: Outcome;
+};
+
+export type DeskReport = {
+  stepId: string;
+  optionId: string;
+  response: string;
+  responseDate: string;
+  referenceNumber?: string;
+  evidence?: string;
+  recordedAt: string;
+  synthetic: boolean;
+};
+
 export type WorkflowNode = {
   id: string;
   type: StepType;
@@ -71,6 +95,11 @@ export type WorkflowNode = {
   declineLabel?: Localized;
   onConfirm: Outcome;
   onDecline?: Outcome;
+  /** Citizen-reported portal or desk result. Only an explicit option may move the journey. */
+  report?: {
+    prompt: Localized;
+    options: DeskReportOption[];
+  };
   /** Desk verification: what the simulated desk returns after `slaDays`. */
   verify?: { slaDays: number; outcome: Outcome };
 };
@@ -88,62 +117,145 @@ export type WorkflowDefinition = {
 
 export type WorkflowId = "bereavement" | "scholarship";
 
-const localizedWorkflowSchema = z.object({
-  hi: z.string().trim().min(1).max(2_000),
-  en: z.string().trim().min(1).max(2_000),
-}).strict();
+const localizedWorkflowSchema = z
+  .object({
+    hi: z.string().trim().min(1).max(2_000),
+    en: z.string().trim().min(1).max(2_000),
+  })
+  .strict();
 
-const outcomeSchema = z.object({
-  state: z.enum(["pending", "needs-you", "verifying", "blocked", "done"]),
-  opens: z.string().trim().min(1).max(128).optional(),
-  resolves: z.string().trim().min(1).max(128).optional(),
-  reply: localizedWorkflowSchema,
-  artifact: z.enum(["correction-declaration", "bank-letter", "rti-draft", "npci-checklist", "escalation-draft"]).optional(),
-  note: localizedWorkflowSchema.optional(),
-}).strict();
+const outcomeSchema = z
+  .object({
+    state: z.enum(["pending", "needs-you", "verifying", "blocked", "done"]),
+    opens: z.string().trim().min(1).max(128).optional(),
+    resolves: z.string().trim().min(1).max(128).optional(),
+    reply: localizedWorkflowSchema,
+    artifact: artifactIdSchema.optional(),
+    note: localizedWorkflowSchema.optional(),
+  })
+  .strict();
 
-const workflowNodeSchema = z.object({
-  id: z.string().trim().min(1).max(128),
-  type: z.enum(["document-explain", "identity-compare", "document-correction", "office-visit", "online-action", "desk-verification", "bank-seeding-fix", "grievance-file", "rti-escalate", "benefit-credit", "case-complete"]),
-  title: localizedWorkflowSchema,
-  detail: localizedWorkflowSchema,
-  ask: localizedWorkflowSchema,
-  visit: z.object({
-    office: localizedWorkflowSchema, why: localizedWorkflowSchema, carry: z.array(localizedWorkflowSchema).max(20),
-    script: localizedWorkflowSchema, expect: localizedWorkflowSchema, collect: localizedWorkflowSchema,
-  }).strict().optional(),
-  link: z.object({ url: z.string().url(), action: localizedWorkflowSchema, collect: localizedWorkflowSchema }).strict().optional(),
-  confirmLabel: localizedWorkflowSchema.optional(),
-  declineLabel: localizedWorkflowSchema.optional(),
-  onConfirm: outcomeSchema,
-  onDecline: outcomeSchema.optional(),
-  verify: z.object({ slaDays: z.number().int().min(0).max(365), outcome: outcomeSchema }).strict().optional(),
-}).strict();
+const workflowNodeSchema = z
+  .object({
+    id: z.string().trim().min(1).max(128),
+    type: z.enum([
+      "document-explain",
+      "identity-compare",
+      "document-correction",
+      "office-visit",
+      "online-action",
+      "desk-verification",
+      "bank-seeding-fix",
+      "grievance-file",
+      "rti-escalate",
+      "benefit-credit",
+      "case-complete",
+    ]),
+    title: localizedWorkflowSchema,
+    detail: localizedWorkflowSchema,
+    ask: localizedWorkflowSchema,
+    visit: z
+      .object({
+        office: localizedWorkflowSchema,
+        why: localizedWorkflowSchema,
+        carry: z.array(localizedWorkflowSchema).max(20),
+        script: localizedWorkflowSchema,
+        expect: localizedWorkflowSchema,
+        collect: localizedWorkflowSchema,
+      })
+      .strict()
+      .optional(),
+    link: z
+      .object({
+        url: z.string().url(),
+        action: localizedWorkflowSchema,
+        collect: localizedWorkflowSchema,
+      })
+      .strict()
+      .optional(),
+    confirmLabel: localizedWorkflowSchema.optional(),
+    declineLabel: localizedWorkflowSchema.optional(),
+    onConfirm: outcomeSchema,
+    onDecline: outcomeSchema.optional(),
+    report: z
+      .object({
+        prompt: localizedWorkflowSchema,
+        options: z
+          .array(
+            z
+              .object({
+                id: z.string().trim().min(1).max(64),
+                label: localizedWorkflowSchema,
+                reply: localizedWorkflowSchema,
+                outcome: outcomeSchema.optional(),
+              })
+              .strict()
+          )
+          .min(1)
+          .max(8),
+      })
+      .strict()
+      .optional(),
+    verify: z
+      .object({
+        slaDays: z.number().int().min(0).max(365),
+        outcome: outcomeSchema,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 
 /** Runtime validation for the one workflow model used by the engine and review revisions. */
-export const workflowDefinitionSchema = z.object({
-  id: z.string().trim().min(1).max(128),
-  title: localizedWorkflowSchema,
-  subtitle: localizedWorkflowSchema,
-  firstNodeId: z.string().trim().min(1).max(128),
-  nodes: z.array(workflowNodeSchema).min(1).max(20),
-  authoredBy: z.enum(["bundled", "web-form", "mcp"]).optional(),
-  authoredAt: z.string().datetime().optional(),
-}).strict().superRefine((definition, context) => {
-  const ids = new Set<string>();
-  for (const [index, node] of definition.nodes.entries()) {
-    if (ids.has(node.id)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["nodes", index, "id"], message: "Node IDs must be unique." });
-    ids.add(node.id);
-  }
-  if (!ids.has(definition.firstNodeId)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["firstNodeId"], message: "The first node must exist." });
-  for (const [index, node] of definition.nodes.entries()) {
-    for (const [field, outcome] of [["onConfirm", node.onConfirm], ["onDecline", node.onDecline], ["verify", node.verify?.outcome]] as const) {
-      for (const target of [outcome?.opens, outcome?.resolves]) {
-        if (target && !ids.has(target)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["nodes", index, field], message: "Outcome targets must exist." });
+export const workflowDefinitionSchema = z
+  .object({
+    id: z.string().trim().min(1).max(128),
+    title: localizedWorkflowSchema,
+    subtitle: localizedWorkflowSchema,
+    firstNodeId: z.string().trim().min(1).max(128),
+    nodes: z.array(workflowNodeSchema).min(1).max(20),
+    authoredBy: z.enum(["bundled", "web-form", "mcp"]).optional(),
+    authoredAt: z.string().datetime().optional(),
+  })
+  .strict()
+  .superRefine((definition, context) => {
+    const ids = new Set<string>();
+    for (const [index, node] of definition.nodes.entries()) {
+      if (ids.has(node.id))
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["nodes", index, "id"],
+          message: "Node IDs must be unique.",
+        });
+      ids.add(node.id);
+    }
+    if (!ids.has(definition.firstNodeId))
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["firstNodeId"],
+        message: "The first node must exist.",
+      });
+    for (const [index, node] of definition.nodes.entries()) {
+      const outcomes = [
+        ["onConfirm", node.onConfirm],
+        ["onDecline", node.onDecline],
+        ["verify", node.verify?.outcome],
+        ...(node.report?.options ?? []).map(
+          (option) => [`report.${option.id}`, option.outcome] as const
+        ),
+      ] as const;
+      for (const [field, outcome] of outcomes) {
+        for (const target of [outcome?.opens, outcome?.resolves]) {
+          if (target && !ids.has(target))
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["nodes", index, field],
+              message: "Outcome targets must exist.",
+            });
+        }
       }
     }
-  }
-});
+  });
 
 export type CaseNode = {
   id: string;
@@ -157,6 +269,9 @@ export type CaseSnapshot = {
   workflowVersionId: string;
   nodes: CaseNode[];
   artifacts: ArtifactId[];
+  reports?: DeskReport[];
+  /** AI-written drafts saved with this browser-private case after citizen review. */
+  artifactDrafts?: Partial<Record<ArtifactId, ArtifactDraft>>;
   /** Simulated days elapsed. Demo time maps one simulated day to ten seconds. */
   day: number;
 };
@@ -183,16 +298,13 @@ export const caseDoneNode: WorkflowNode = {
   },
 };
 
-/** The SLA breach note both journeys record after a three-day wait. */
-const threeDayBreachNote: Localized = {
-  hi: "समय-सीमा पार: 3 दिन",
-  en: "Time limit crossed: 3 days",
-};
-
 const bereavement: WorkflowDefinition = {
   id: "bereavement",
   title: { hi: "मृत्यु के बाद के दावे", en: "Bereavement claim" },
-  subtitle: { hi: "Bereavement claim", en: "Claims after a death in the family" },
+  subtitle: {
+    hi: "Bereavement claim",
+    en: "Claims after a death in the family",
+  },
   firstNodeId: "form4-explain",
   nodes: [
     {
@@ -229,7 +341,10 @@ const bereavement: WorkflowDefinition = {
         en: "Form 4 says the name is Shyam Sunder. Is that correct?",
       },
       confirmLabel: { hi: "हाँ, यही सही है", en: "Yes, that is correct" },
-      declineLabel: { hi: "नहीं, बैंक में अलग है", en: "No, the bank has it differently" },
+      declineLabel: {
+        hi: "नहीं, बैंक में अलग है",
+        en: "No, the bank has it differently",
+      },
       onConfirm: {
         state: "done",
         opens: "bank-claim",
@@ -283,8 +398,8 @@ const bereavement: WorkflowDefinition = {
         en: "Submit the claim form and the correction declaration at the bank branch.",
       },
       ask: {
-        hi: "क्या आपने बैंक शाखा में क्लेम जमा कर दिया है?",
-        en: "Have you submitted the claim at the bank branch?",
+        hi: "क्लेम जमा करने के बाद बैंक ने क्या बताया?",
+        en: "What did the bank tell you after you submitted the claim?",
       },
       visit: {
         office: {
@@ -312,26 +427,50 @@ const bereavement: WorkflowDefinition = {
         },
       },
       onConfirm: {
-        state: "verifying",
+        state: "needs-you",
         reply: {
-          hi: "क्लेम जमा हो गया। बैंक की जाँच शुरू है — मैं नज़र रखता हूँ।",
-          en: "The claim is submitted. The bank's check has started — I am keeping watch.",
+          hi: "बैंक से मिला वास्तविक जवाब केस रिकॉर्ड में दर्ज करें।",
+          en: "Record the bank's actual response in the case record.",
         },
       },
-      verify: {
-        slaDays: 2,
-        outcome: {
-          state: "blocked",
-          opens: "bank-claim-fix",
-          reply: {
-            hi: "बैंक ने दावा लौटा दिया है। कारण: हस्ताक्षर मेल नहीं खाया।",
-            en: "The bank has returned the claim. Reason given: the signature did not match.",
-          },
-          note: {
-            hi: "अस्वीकृति: हस्ताक्षर मेल नहीं खाया",
-            en: "Rejection: the signature did not match",
-          },
+      report: {
+        prompt: {
+          hi: "बैंक का वास्तविक जवाब दर्ज करें",
+          en: "Record the bank's actual response",
         },
+        options: [
+          {
+            id: "signature-mismatch",
+            label: {
+              hi: "हस्ताक्षर मेल न खाने के कारण क्लेम लौटाया गया",
+              en: "The claim was returned because the signature did not match",
+            },
+            reply: {
+              hi: "आपका जवाब दर्ज है। प्रकाशित यात्रा अब हस्ताक्षर सुधार का समर्थित कदम दिखा सकती है।",
+              en: "Your response is recorded. The published journey can now show its supported signature-correction step.",
+            },
+            outcome: {
+              state: "blocked",
+              opens: "bank-claim-fix",
+              reply: {
+                hi: "आपका जवाब दर्ज है। प्रकाशित यात्रा अब हस्ताक्षर सुधार का समर्थित कदम दिखा सकती है।",
+                en: "Your response is recorded. The published journey can now show its supported signature-correction step.",
+              },
+              note: {
+                hi: "नागरिक द्वारा दर्ज जवाब: हस्ताक्षर मेल नहीं खाया",
+                en: "Citizen-reported response: signature did not match",
+              },
+            },
+          },
+          {
+            id: "different",
+            label: {
+              hi: "कुछ अलग बताया गया",
+              en: "The bank said something different",
+            },
+            reply: { hi: "जवाब दर्ज है।", en: "The response is recorded." },
+          },
+        ],
       },
     },
     {
@@ -366,27 +505,57 @@ const bereavement: WorkflowDefinition = {
         en: "File the nominee claim at the EPFO office.",
       },
       ask: {
-        hi: "क्या EPFO नॉमिनी दावा दर्ज हो गया है?",
-        en: "Has the EPFO nominee claim been filed?",
+        hi: "दावा दर्ज करने के बाद EPFO से क्या जवाब मिला?",
+        en: "What response did you receive from EPFO after filing the claim?",
       },
       onConfirm: {
-        state: "verifying",
+        state: "needs-you",
         reply: {
-          hi: "दावा दर्ज हो गया। तय समय-सीमा पर मैं नज़र रखता हूँ।",
-          en: "The claim is filed. I am keeping watch on the stated time limit.",
+          hi: "EPFO से मिला वास्तविक जवाब केस रिकॉर्ड में दर्ज करें।",
+          en: "Record the actual response from EPFO in the case record.",
         },
       },
-      verify: {
-        slaDays: 3,
-        outcome: {
-          state: "blocked",
-          opens: "rti-draft",
-          reply: {
-            hi: "तय समय-सीमा निकल गई और कोई जवाब नहीं आया। अब escalation का हक़ बनता है।",
-            en: "The time limit has passed and no reply came. You now have the right to escalate.",
-          },
-          note: threeDayBreachNote,
+      report: {
+        prompt: {
+          hi: "EPFO का वास्तविक जवाब दर्ज करें",
+          en: "Record EPFO's actual response",
         },
+        options: [
+          {
+            id: "no-useful-response",
+            label: {
+              hi: "कोई उपयोगी जवाब नहीं मिला",
+              en: "No useful response was received",
+            },
+            reply: {
+              hi: "आपका अपडेट दर्ज है। अब पुष्टि किए गए रिकॉर्ड से RTI मसौदा बनाया जा सकता है।",
+              en: "Your update is recorded. An RTI draft can now be prepared from the confirmed record.",
+            },
+            outcome: {
+              state: "blocked",
+              opens: "rti-draft",
+              reply: {
+                hi: "आपका अपडेट दर्ज है। अब पुष्टि किए गए रिकॉर्ड से RTI मसौदा बनाया जा सकता है।",
+                en: "Your update is recorded. An RTI draft can now be prepared from the confirmed record.",
+              },
+              note: {
+                hi: "नागरिक द्वारा दर्ज अपडेट: उपयोगी जवाब नहीं मिला",
+                en: "Citizen-reported update: no useful response",
+              },
+            },
+          },
+          {
+            id: "different",
+            label: {
+              hi: "कुछ अलग जवाब मिला",
+              en: "A different response was received",
+            },
+            reply: {
+              hi: "जवाब दर्ज है।",
+              en: "The response is recorded.",
+            },
+          },
+        ],
       },
     },
     {
@@ -398,16 +567,16 @@ const bereavement: WorkflowDefinition = {
         en: "An ordinary RTI application about the delay. This is ordinary delay, so the 48-hour life-and-liberty provision does not apply here.",
       },
       ask: {
-        hi: "मैंने RTI का मसौदा तैयार किया है। क्या इसे केस में क़तार में रख दूँ?",
-        en: "I have drafted the RTI. Shall I queue it in your case?",
+        hi: "क्या पुष्टि किए गए केस रिकॉर्ड से RTI मसौदा बनाऊँ?",
+        en: "Create an RTI draft from the confirmed case record?",
       },
       onConfirm: {
         state: "done",
         opens: "case-done",
         resolves: "epfo-claim",
         reply: {
-          hi: "RTI मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
-          en: "The RTI draft is queued. Your approval will be taken before anything is sent.",
+          hi: "RTI मसौदा Case Card में तैयार है। उसे जाँचकर स्वयं जमा करें; सहायक ने इसे भेजा नहीं है।",
+          en: "The RTI draft is ready in the Case Card. Review and submit it yourself; Sahayak has not sent it.",
         },
         artifact: "rti-draft",
       },
@@ -419,7 +588,10 @@ const bereavement: WorkflowDefinition = {
 const scholarship: WorkflowDefinition = {
   id: "scholarship",
   title: { hi: "अटकी हुई छात्रवृत्ति", en: "Stuck scholarship" },
-  subtitle: { hi: "Stuck NSP scholarship", en: "An NSP payment that never arrived" },
+  subtitle: {
+    hi: "NSP छात्रवृत्ति भुगतान खाते में नहीं पहुँचा",
+    en: "An NSP payment that never arrived",
+  },
   firstNodeId: "nsp-status",
   nodes: [
     {
@@ -427,19 +599,19 @@ const scholarship: WorkflowDefinition = {
       type: "document-explain",
       title: { hi: "NSP स्थिति समझें", en: "Understand the NSP status" },
       detail: {
-        hi: "पोर्टल पर 'Released to PFMS' दिखता है, पर खाते में पैसा नहीं आया। इसका मतलब भुगतान बैंक स्तर पर अटका है।",
-        en: "The portal shows 'Released to PFMS', but no money reached the account. That means the payment is stuck at the bank end.",
+        hi: "पोर्टल पर 'Released to PFMS' दिखता है, पर खाते में पैसा नहीं आया। केवल यह स्थिति देरी का कारण नहीं बताती।",
+        en: "The portal shows 'Released to PFMS', but no money reached the account. That status alone does not explain the delay.",
       },
       ask: {
-        hi: "आपकी स्थिति 'Released to PFMS' दिख रही है पर पैसा नहीं आया। क्या मैं कारण ढूँढूँ?",
-        en: "Your status shows 'Released to PFMS' but the money has not arrived. Shall I find the reason?",
+        hi: "क्या आप PFMS या संबंधित डेस्क से मिले वास्तविक जवाब को दर्ज करने के लिए तैयार हैं?",
+        en: "Are you ready to record the actual response you received from PFMS or the relevant desk?",
       },
       onConfirm: {
         state: "done",
         opens: "pfms-trace",
         reply: {
-          hi: "ठीक है। PFMS की तरफ़ से भुगतान की स्थिति देखते हैं।",
-          en: "Alright. Let us look at the payment status from the PFMS side.",
+          hi: "ठीक है। अब वही दर्ज करें जो पोर्टल या डेस्क ने वास्तव में बताया।",
+          en: "Alright. Now record exactly what the portal or desk actually told you.",
         },
       },
     },
@@ -448,47 +620,77 @@ const scholarship: WorkflowDefinition = {
       type: "desk-verification",
       title: { hi: "PFMS भुगतान जाँच", en: "PFMS payment check" },
       detail: {
-        hi: "PFMS से भुगतान की वापसी का कारण मँगाया जाता है।",
-        en: "The reason the payment came back is requested from PFMS.",
+        hi: "PFMS या संबंधित डेस्क से मिले जवाब की तारीख, संदर्भ और प्रमाण दर्ज करें। सहायक कोई जवाब स्वयं प्राप्त नहीं करता।",
+        en: "Record the date, reference and evidence from PFMS or the relevant desk. Sahayak does not receive that response itself.",
       },
       ask: {
-        hi: "क्या मैं PFMS भुगतान जाँच शुरू कर दूँ?",
-        en: "Shall I start the PFMS payment check?",
+        hi: "पोर्टल या डेस्क ने क्या बताया?",
+        en: "What did the portal or desk tell you?",
       },
       onConfirm: {
-        state: "verifying",
+        state: "needs-you",
         reply: {
-          hi: "जाँच शुरू है। कारण मिलते ही बताता हूँ।",
-          en: "The check has started. I will tell you as soon as the reason comes in.",
+          hi: "जवाब को नीचे दिए गए रिकॉर्ड में दर्ज करें।",
+          en: "Record the response in the case record below.",
         },
       },
-      verify: {
-        slaDays: 1,
-        outcome: {
-          state: "blocked",
-          opens: "bank-seeding",
-          reply: {
-            hi: "कारण मिल गया: बैंक ने भुगतान लौटा दिया — खाता आधार से नहीं जुड़ा (NPCI)।",
-            en: "Found the reason: the bank returned the payment — the account is not linked to Aadhaar (NPCI).",
-          },
-          note: {
-            hi: "छिपा कारण: NPCI mapping न होना",
-            en: "Hidden reason: NPCI mapping missing",
-          },
+      report: {
+        prompt: {
+          hi: "मिला हुआ वास्तविक जवाब दर्ज करें",
+          en: "Record the response you actually received",
         },
+        options: [
+          {
+            id: "npci-missing",
+            label: {
+              hi: "जवाब में आधार/NPCI mapping की समस्या बताई गई",
+              en: "They reported an Aadhaar/NPCI mapping issue",
+            },
+            reply: {
+              hi: "आपका जवाब दर्ज हो गया। यह प्रकाशित यात्रा अब बैंक सीडिंग सुधार का समर्थित कदम दिखा सकती है।",
+              en: "Your response is recorded. This published journey can now show its supported bank-seeding recovery step.",
+            },
+            outcome: {
+              state: "blocked",
+              opens: "bank-seeding",
+              reply: {
+                hi: "आपका जवाब दर्ज हो गया। यह प्रकाशित यात्रा अब बैंक सीडिंग सुधार का समर्थित कदम दिखा सकती है।",
+                en: "Your response is recorded. This published journey can now show its supported bank-seeding recovery step.",
+              },
+              note: {
+                hi: "नागरिक द्वारा दर्ज जवाब: NPCI mapping की समस्या",
+                en: "Citizen-reported response: NPCI mapping issue",
+              },
+            },
+          },
+          {
+            id: "different",
+            label: {
+              hi: "कुछ अलग बताया गया",
+              en: "They told me something different",
+            },
+            reply: {
+              hi: "जवाब दर्ज है।",
+              en: "The response is recorded.",
+            },
+          },
+        ],
       },
     },
     {
       id: "bank-seeding",
       type: "bank-seeding-fix",
-      title: { hi: "बैंक खाता सीडिंग ठीक करें", en: "Fix the bank account seeding" },
+      title: {
+        hi: "बैंक खाता सीडिंग ठीक करें",
+        en: "Fix the bank account seeding",
+      },
       detail: {
         hi: "शाखा में जाकर खाता आधार से जुड़वाइए और NPCI mapping सक्रिय कराइए।",
         en: "Go to the branch, get the account linked to Aadhaar, and get NPCI mapping activated.",
       },
       ask: {
-        hi: "क्या आपने शाखा में खाता सीडिंग का अनुरोध दे दिया है?",
-        en: "Have you given the account seeding request at the branch?",
+        hi: "शाखा में सीडिंग अनुरोध देने पर क्या हुआ?",
+        en: "What happened when you gave the seeding request at the branch?",
       },
       visit: {
         office: { hi: "आपकी बैंक शाखा", en: "Your bank branch" },
@@ -499,7 +701,10 @@ const scholarship: WorkflowDefinition = {
         carry: [
           { hi: "पासबुक", en: "The passbook" },
           { hi: "आधार की प्रति", en: "A copy of your Aadhaar" },
-          { hi: "छात्रवृत्ति आवेदन संख्या", en: "The scholarship application number" },
+          {
+            hi: "छात्रवृत्ति आवेदन संख्या",
+            en: "The scholarship application number",
+          },
         ],
         script: {
           hi: "मेरा खाता आधार से जोड़कर NPCI mapping सक्रिय कीजिए। कृपया पावती दीजिए।",
@@ -512,14 +717,51 @@ const scholarship: WorkflowDefinition = {
         },
       },
       onConfirm: {
-        state: "done",
-        opens: "verify-again",
-        resolves: "pfms-trace",
+        state: "needs-you",
         reply: {
-          hi: "सीडिंग अनुरोध दर्ज हो गया। अब दोबारा भुगतान जाँच लगाते हैं।",
-          en: "The seeding request is recorded. Now let us run the payment check again.",
+          hi: "शाखा से मिला वास्तविक नतीजा नीचे दर्ज करें।",
+          en: "Record the branch's actual response below.",
         },
-        artifact: "npci-checklist",
+      },
+      report: {
+        prompt: {
+          hi: "शाखा का वास्तविक जवाब और पावती दर्ज करें",
+          en: "Record the branch response and acknowledgement",
+        },
+        options: [
+          {
+            id: "request-acknowledged",
+            label: {
+              hi: "सीडिंग अनुरोध स्वीकार हुआ और पावती मिली",
+              en: "The seeding request was accepted and I received an acknowledgement",
+            },
+            reply: {
+              hi: "पावती दर्ज है। अब मिलने वाला वास्तविक भुगतान अपडेट दर्ज करें।",
+              en: "The acknowledgement is recorded. Next, record the actual payment update you receive.",
+            },
+            outcome: {
+              state: "done",
+              opens: "verify-again",
+              resolves: "pfms-trace",
+              reply: {
+                hi: "पावती दर्ज है। अब मिलने वाला वास्तविक भुगतान अपडेट दर्ज करें।",
+                en: "The acknowledgement is recorded. Next, record the actual payment update you receive.",
+              },
+              artifact: "npci-checklist",
+            },
+          },
+          {
+            id: "could-not-submit",
+            label: {
+              hi: "अनुरोध जमा नहीं हो सका",
+              en: "I could not submit the request",
+            },
+            reply: {
+              hi: "नतीजा दर्ज है। सहायक इसे सफल मानकर आगे नहीं बढ़ेगा।",
+              en: "The outcome is recorded. Sahayak will not treat it as successful or advance the case.",
+            },
+          },
+        ],
       },
     },
     {
@@ -527,31 +769,78 @@ const scholarship: WorkflowDefinition = {
       type: "desk-verification",
       title: { hi: "दोबारा भुगतान जाँच", en: "Payment check again" },
       detail: {
-        hi: "सीडिंग ठीक होने के बाद भुगतान दोबारा जाँचा जाता है।",
-        en: "Once the seeding is fixed, the payment is checked again.",
+        hi: "सीडिंग अनुरोध के बाद पोर्टल, बैंक या डेस्क से मिले वास्तविक अपडेट को दर्ज करें।",
+        en: "After the seeding request, record the actual update from the portal, bank or desk.",
       },
       ask: {
-        hi: "क्या मैं दोबारा भुगतान जाँच लगा दूँ?",
-        en: "Shall I run the payment check again?",
+        hi: "दोबारा जाँच करने पर क्या हुआ?",
+        en: "What happened when you checked again?",
       },
       onConfirm: {
-        state: "verifying",
+        state: "needs-you",
         reply: {
-          hi: "दोबारा जाँच लगी है। समय-सीमा पर नज़र है।",
-          en: "The check is running again. I am watching the time limit.",
+          hi: "मिला हुआ अपडेट नीचे दर्ज करें।",
+          en: "Record the update you received below.",
         },
       },
-      verify: {
-        slaDays: 3,
-        outcome: {
-          state: "blocked",
-          opens: "grievance",
-          reply: {
-            hi: "तय समय-सीमा निकल गई। अब NSP शिकायत दर्ज करने का हक़ बनता है।",
-            en: "The time limit has passed. You now have the right to file an NSP grievance.",
-          },
-          note: threeDayBreachNote,
+      report: {
+        prompt: {
+          hi: "दोबारा जाँच का वास्तविक नतीजा दर्ज करें",
+          en: "Record the actual result of checking again",
         },
+        options: [
+          {
+            id: "still-missing",
+            label: {
+              hi: "भुगतान अभी भी नहीं आया या उपयोगी जवाब नहीं मिला",
+              en: "Payment is still missing or no useful response was given",
+            },
+            reply: {
+              hi: "आपका अपडेट दर्ज है। अब पुष्टि किए गए विवरण से शिकायत का मसौदा बनाया जा सकता है।",
+              en: "Your update is recorded. A grievance draft can now be prepared from the confirmed case details.",
+            },
+            outcome: {
+              state: "blocked",
+              opens: "grievance",
+              reply: {
+                hi: "आपका अपडेट दर्ज है। अब पुष्टि किए गए विवरण से शिकायत का मसौदा बनाया जा सकता है।",
+                en: "Your update is recorded. A grievance draft can now be prepared from the confirmed case details.",
+              },
+              note: {
+                hi: "नागरिक द्वारा दर्ज अपडेट: भुगतान अभी भी नहीं आया",
+                en: "Citizen-reported update: payment still missing",
+              },
+            },
+          },
+          {
+            id: "credited",
+            label: {
+              hi: "भुगतान खाते में आ गया",
+              en: "The payment reached my account",
+            },
+            reply: {
+              hi: "अपडेट दर्ज है। अब नागरिक राशि आने की पुष्टि कर सकता है।",
+              en: "The update is recorded. The citizen can now confirm the credit.",
+            },
+            outcome: {
+              state: "done",
+              opens: "credit",
+              resolves: "pfms-trace",
+              reply: {
+                hi: "अपडेट दर्ज है। अब नागरिक राशि आने की पुष्टि कर सकता है।",
+                en: "The update is recorded. The citizen can now confirm the credit.",
+              },
+            },
+          },
+          {
+            id: "different",
+            label: { hi: "कुछ अलग हुआ", en: "Something different happened" },
+            reply: {
+              hi: "अपडेट दर्ज है।",
+              en: "The update is recorded.",
+            },
+          },
+        ],
       },
     },
     {
@@ -559,20 +848,20 @@ const scholarship: WorkflowDefinition = {
       type: "grievance-file",
       title: { hi: "NSP शिकायत दर्ज करें", en: "File the NSP grievance" },
       detail: {
-        hi: "पोर्टल पर शिकायत का मसौदा, जिसमें सीडिंग पावती संदर्भ जुड़ा है।",
-        en: "A grievance draft for the portal, with the seeding acknowledgement reference attached.",
+        hi: "पुष्टि किए गए केस रिकॉर्ड से शिकायत का मसौदा। केवल दर्ज संदर्भ और प्रमाण जोड़े जाते हैं।",
+        en: "A grievance draft from the confirmed case record. Only recorded references and evidence are included.",
       },
       ask: {
-        hi: "मैंने शिकायत का मसौदा तैयार किया है। क्या इसे क़तार में रख दूँ?",
-        en: "I have drafted the grievance. Shall I queue it?",
+        hi: "क्या पुष्टि किए गए केस रिकॉर्ड से शिकायत का मसौदा बनाऊँ?",
+        en: "Create a grievance draft from the confirmed case record?",
       },
       onConfirm: {
         state: "done",
         opens: "credit",
         resolves: "verify-again",
         reply: {
-          hi: "शिकायत मसौदा क़तार में है। भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
-          en: "The grievance draft is queued. Your approval will be taken before it is sent.",
+          hi: "अब Case Card में शिकायत का मसौदा तैयार किया जा सकता है। उसे जाँचकर स्वयं जमा करें; सहायक इसे नहीं भेजेगा।",
+          en: "The grievance can now be prepared in the Case Card. Review and submit it yourself; Sahayak will not send it.",
         },
         artifact: "escalation-draft",
       },
@@ -582,8 +871,8 @@ const scholarship: WorkflowDefinition = {
       type: "benefit-credit",
       title: { hi: "राशि खाते में", en: "Money in the account" },
       detail: {
-        hi: "सुधार के बाद छात्रवृत्ति राशि खाते में जमा हो जाती है।",
-        en: "After the fix, the scholarship amount is credited to the account.",
+        hi: "सुधार के बाद खाते की जाँच करें। समस्या तभी हल मानी जाएगी जब नागरिक राशि आने की पुष्टि करे।",
+        en: "Check the account after the correction. The problem is resolved only when the citizen confirms the credit.",
       },
       ask: {
         hi: "क्या खाते में राशि जमा होने की पुष्टि दर्ज कर दूँ?",
@@ -616,36 +905,63 @@ export const workflowIds = Object.keys(workflows) as WorkflowId[];
  */
 const registry = new Map<string, WorkflowDefinition>(Object.entries(workflows));
 
-export function registerWorkflowDefinition(definition: WorkflowDefinition, workflowVersionId?: string): void {
+export function registerWorkflowDefinition(
+  definition: WorkflowDefinition,
+  workflowVersionId?: string
+): void {
   registry.set(workflowVersionId ?? definition.id, definition);
 }
 
-export function getWorkflowDefinition(id: string): WorkflowDefinition | undefined {
+export function getWorkflowDefinition(
+  id: string
+): WorkflowDefinition | undefined {
   return registry.get(id);
 }
 
 /** Resolves the immutable definition a saved case was started with. */
-export function getCaseWorkflowDefinition(caseSnapshot: CaseSnapshot): WorkflowDefinition | undefined {
-  return registry.get(caseSnapshot.workflowVersionId) ?? registry.get(caseSnapshot.workflowId);
+export function getCaseWorkflowDefinition(
+  caseSnapshot: CaseSnapshot
+): WorkflowDefinition | undefined {
+  return (
+    registry.get(caseSnapshot.workflowVersionId) ??
+    registry.get(caseSnapshot.workflowId)
+  );
 }
 
 export function isWorkflowId(value: unknown): value is WorkflowId {
   return typeof value === "string" && value in workflows;
 }
 
-export function findNode(workflowId: string, nodeId: string): WorkflowNode | undefined {
-  return getWorkflowDefinition(workflowId)?.nodes.find((node) => node.id === nodeId);
+export function findNode(
+  workflowId: string,
+  nodeId: string
+): WorkflowNode | undefined {
+  return getWorkflowDefinition(workflowId)?.nodes.find(
+    (node) => node.id === nodeId
+  );
 }
 
 /** Step types used by both journeys — the composition proof. */
 export function sharedStepTypes(): StepType[] {
   const scholarshipTypes = new Set(scholarship.nodes.map((node) => node.type));
-  return [...new Set(bereavement.nodes.map((node) => node.type))]
-    .filter((type) => scholarshipTypes.has(type));
+  return [...new Set(bereavement.nodes.map((node) => node.type))].filter(
+    (type) => scholarshipTypes.has(type)
+  );
 }
 
 /** The blocking outcome a node can hit, if any. */
-function blockingOutcome(node: WorkflowNode): Outcome | undefined {
+function blockingOutcome(
+  node: WorkflowNode,
+  caseSnapshot?: CaseSnapshot
+): Outcome | undefined {
+  const selectedOptionId = [...(caseSnapshot?.reports ?? [])]
+    .reverse()
+    .find((report) => report.stepId === node.id)?.optionId;
+  const reportedOutcome = selectedOptionId
+    ? node.report?.options.find((option) => option.id === selectedOptionId)
+        ?.outcome
+    : undefined;
+  if (reportedOutcome?.state === "blocked") return reportedOutcome;
   if (node.verify?.outcome.state === "blocked") return node.verify.outcome;
   if (node.onDecline?.state === "blocked") return node.onDecline;
   return undefined;
@@ -656,29 +972,44 @@ function blockingOutcome(node: WorkflowNode): Outcome | undefined {
  * rather than from the snapshot, so no note can be supplied by a client.
  * A node that was blocked and then recovered keeps its note as evidence.
  */
-export function nodeNote(caseSnapshot: CaseSnapshot, nodeId: string): Localized | undefined {
+export function nodeNote(
+  caseSnapshot: CaseSnapshot,
+  nodeId: string
+): Localized | undefined {
   const entry = caseSnapshot.nodes.find((node) => node.id === nodeId);
-  const definition = getCaseWorkflowDefinition(caseSnapshot)?.nodes.find((node) => node.id === nodeId);
-  const blocking = definition && blockingOutcome(definition);
+  const definition = getCaseWorkflowDefinition(caseSnapshot)?.nodes.find(
+    (node) => node.id === nodeId
+  );
+  const blocking = definition && blockingOutcome(definition, caseSnapshot);
 
   if (!entry || !blocking) return undefined;
   if (entry.state === "blocked") return blocking.note;
 
-  const recovery = caseSnapshot.nodes.find((node) => node.id === blocking.opens);
-  return entry.state === "done" && recovery?.state === "done" ? blocking.note : undefined;
+  const recovery = caseSnapshot.nodes.find(
+    (node) => node.id === blocking.opens
+  );
+  return entry.state === "done" && recovery?.state === "done"
+    ? blocking.note
+    : undefined;
 }
 
 /** True once a node was blocked and its recovery step completed. */
-export function isClearedBlocker(caseSnapshot: CaseSnapshot, nodeId: string): boolean {
+export function isClearedBlocker(
+  caseSnapshot: CaseSnapshot,
+  nodeId: string
+): boolean {
   const entry = caseSnapshot.nodes.find((node) => node.id === nodeId);
-  return entry?.state === "done" && nodeNote(caseSnapshot, nodeId) !== undefined;
+  return (
+    entry?.state === "done" && nodeNote(caseSnapshot, nodeId) !== undefined
+  );
 }
 
 export function startCase(
   workflowId: string,
-  workflowVersionId = `${workflowId}-v1`,
+  workflowVersionId = `${workflowId}-v1`
 ): CaseSnapshot {
-  const workflow = registry.get(workflowVersionId) ?? getWorkflowDefinition(workflowId);
+  const workflow =
+    registry.get(workflowVersionId) ?? getWorkflowDefinition(workflowId);
   if (!workflow) throw new Error(`Unknown workflow: ${workflowId}`);
 
   return {
@@ -689,20 +1020,71 @@ export function startCase(
       state: node.id === workflow.firstNodeId ? "needs-you" : "pending",
     })),
     artifacts: [],
+    reports: [],
     day: 0,
   };
 }
 
+export type RecordDeskReportInput = Omit<DeskReport, "stepId" | "synthetic">;
+
+/** Records citizen evidence first; only a configured option may move the case. */
+export function recordDeskReport(
+  caseSnapshot: CaseSnapshot,
+  input: RecordDeskReportInput
+): EngineResult {
+  const definition = getCaseWorkflowDefinition(caseSnapshot);
+  const entry = caseSnapshot.nodes.find(
+    (node) => node.state === "needs-you" || node.state === "verifying"
+  );
+  const node =
+    entry && definition?.nodes.find((candidate) => candidate.id === entry.id);
+  const option = node?.report?.options.find(
+    (candidate) => candidate.id === input.optionId
+  );
+
+  if (!entry || !node?.report || !option) {
+    throw new Error("DESK_REPORT_NOT_ALLOWED");
+  }
+
+  const report: DeskReport = {
+    ...input,
+    stepId: node.id,
+    synthetic: isSyntheticSeed(caseSnapshot.workflowId),
+  };
+  const withReport = {
+    ...caseSnapshot,
+    reports: [...(caseSnapshot.reports ?? []), report],
+  };
+
+  return {
+    caseSnapshot: option.outcome
+      ? applyOutcome(withReport, node.id, option.outcome)
+      : withReport,
+    reply: option.reply,
+  };
+}
+
+export function isSyntheticSeed(workflowId: string): boolean {
+  return workflowId === "scholarship" || workflowId === "bereavement";
+}
+
 /** The node the citizen is being asked about right now. */
-export function currentNode(caseSnapshot: CaseSnapshot): WorkflowNode | undefined {
+export function currentNode(
+  caseSnapshot: CaseSnapshot
+): WorkflowNode | undefined {
   const open = caseSnapshot.nodes.find((node) => node.state === "needs-you");
-  return open && getCaseWorkflowDefinition(caseSnapshot)?.nodes.find((node) => node.id === open.id);
+  return (
+    open &&
+    getCaseWorkflowDefinition(caseSnapshot)?.nodes.find(
+      (node) => node.id === open.id
+    )
+  );
 }
 
 function applyOutcome(
   caseSnapshot: CaseSnapshot,
   nodeId: string,
-  outcome: Outcome,
+  outcome: Outcome
 ): CaseSnapshot {
   return {
     ...caseSnapshot,
@@ -711,36 +1093,38 @@ function applyOutcome(
         return {
           ...node,
           state: outcome.state,
-          startedDay: outcome.state === "verifying" ? caseSnapshot.day : undefined,
+          startedDay:
+            outcome.state === "verifying" ? caseSnapshot.day : undefined,
         };
       }
       if (node.id === outcome.resolves) return { ...node, state: "done" };
       if (node.id === outcome.opens) return { ...node, state: "needs-you" };
       return node;
     }),
-    artifacts: outcome.artifact && !caseSnapshot.artifacts.includes(outcome.artifact)
-      ? [...caseSnapshot.artifacts, outcome.artifact]
-      : caseSnapshot.artifacts,
+    artifacts:
+      outcome.artifact && !caseSnapshot.artifacts.includes(outcome.artifact)
+        ? [...caseSnapshot.artifacts, outcome.artifact]
+        : caseSnapshot.artifacts,
   };
 }
 
 /** Replies the engine itself produces, outside any node's content. */
 const engineReplies = {
   waiting: {
-    hi: "अभी जाँच चल रही है। जवाब आते ही मैं बताऊँगा।",
-    en: "A check is still running. I will tell you as soon as there is a reply.",
+    hi: "यह पुराना डेमो केस नागरिक द्वारा दर्ज अपडेट का इंतज़ार कर रहा है।",
+    en: "This older synthetic example case is waiting for a citizen-recorded update.",
   },
   allDone: {
     hi: "इस केस के सारे कदम पूरे हो चुके हैं। आपका Case Card तैयार है।",
     en: "Every step in this case is done. Your Case Card is ready.",
   },
   noReplyYet: {
-    hi: "अभी तक कोई जवाब नहीं आया। मैं नज़र रखे हुए हूँ।",
-    en: "No reply has come yet. I am keeping watch.",
+    hi: "कृत्रिम समय आगे बढ़ा है; कोई वास्तविक जवाब प्राप्त नहीं हुआ।",
+    en: "Synthetic time advanced; no real response was received.",
   },
   nothingPending: {
     hi: "अभी कोई जाँच लंबित नहीं है, इसलिए समय नहीं बदला।",
-    en: "No check is pending, so demo time did not change.",
+    en: "No check is pending, so simulated time did not change.",
   },
 } satisfies Record<string, Localized>;
 
@@ -750,7 +1134,10 @@ export type EngineResult = { caseSnapshot: CaseSnapshot; reply: Localized };
  * Resolves a citizen reply against the current node. This is the only authority
  * for case transitions; the language model never decides one.
  */
-export function applyCitizenReply(caseSnapshot: CaseSnapshot, message: string): EngineResult {
+export function applyCitizenReply(
+  caseSnapshot: CaseSnapshot,
+  message: string
+): EngineResult {
   return applyIntent(caseSnapshot, readIntent(message));
 }
 
@@ -759,11 +1146,16 @@ export function applyCitizenReply(caseSnapshot: CaseSnapshot, message: string): 
  * deterministic reader or from the clerk model, but only this function decides
  * what the case does with it.
  */
-export function applyIntent(caseSnapshot: CaseSnapshot, intent: Intent): EngineResult {
+export function applyIntent(
+  caseSnapshot: CaseSnapshot,
+  intent: Intent
+): EngineResult {
   const node = currentNode(caseSnapshot);
 
   if (!node) {
-    const waiting = caseSnapshot.nodes.some((entry) => entry.state === "verifying");
+    const waiting = caseSnapshot.nodes.some(
+      (entry) => entry.state === "verifying"
+    );
     return {
       caseSnapshot,
       reply: waiting ? engineReplies.waiting : engineReplies.allDone,
@@ -792,14 +1184,18 @@ export function applyIntent(caseSnapshot: CaseSnapshot, intent: Intent): EngineR
  * releases it when its clock expires. Demo mode is deterministic.
  */
 export function advanceDay(caseSnapshot: CaseSnapshot): EngineResult {
-  const verifying = caseSnapshot.nodes.find((node) => node.state === "verifying");
+  const verifying = caseSnapshot.nodes.find(
+    (node) => node.state === "verifying"
+  );
 
   if (!verifying) {
     return { caseSnapshot, reply: engineReplies.nothingPending };
   }
 
   const day = caseSnapshot.day + 1;
-  const definition = getCaseWorkflowDefinition(caseSnapshot)?.nodes.find((node) => node.id === verifying.id);
+  const definition = getCaseWorkflowDefinition(caseSnapshot)?.nodes.find(
+    (node) => node.id === verifying.id
+  );
 
   const elapsed = day - (verifying.startedDay ?? 0);
 
@@ -811,7 +1207,10 @@ export function advanceDay(caseSnapshot: CaseSnapshot): EngineResult {
   }
 
   return {
-    caseSnapshot: { ...applyOutcome(caseSnapshot, verifying.id, definition.verify.outcome), day },
+    caseSnapshot: {
+      ...applyOutcome(caseSnapshot, verifying.id, definition.verify.outcome),
+      day,
+    },
     reply: definition.verify.outcome.reply,
   };
 }

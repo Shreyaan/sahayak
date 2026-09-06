@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import {
   citizenCasesTable,
@@ -6,6 +6,7 @@ import {
   legacyWorkflowDefinitionsTable,
 } from "@/db/schema";
 import type { CaseSnapshot } from "./workflow";
+import type { ArtifactDraft } from "./artifact-drafts";
 
 /**
  * One storage seam for everything that must outlive a page reload: citizen
@@ -37,6 +38,8 @@ export type StoredWorkflow = {
 
 export type Store = {
   saveCase(id: string, snapshot: CaseSnapshot, ownerHash?: string): Promise<void>;
+  saveCaseProgress(id: string, snapshot: CaseSnapshot, ownerHash?: string): Promise<void>;
+  saveArtifactDraft(id: string, draft: ArtifactDraft, ownerHash?: string): Promise<void>;
   getCase(id: string, ownerHash?: string): Promise<StoredCase | null>;
   listCases(limit: number, ownerHash?: string): Promise<StoredCase[]>;
   saveSubmission(submission: Omit<StoredSubmission, "id" | "createdAt">): Promise<void>;
@@ -70,6 +73,31 @@ const memoryStore: Store = {
       snapshot,
       updatedAt: memoryTime(),
       ownerHash: existing?.ownerHash ?? ownerHash ?? null,
+    });
+  },
+  async saveCaseProgress(id, snapshot, ownerHash) {
+    const existing = memory.cases.get(id);
+    if (!existing || (ownerHash && existing.ownerHash !== ownerHash)) throw new Error("CASE_NOT_FOUND");
+    memory.cases.set(id, {
+      ...existing,
+      workflowId: snapshot.workflowId,
+      snapshot: {
+        ...snapshot,
+        artifactDrafts: existing.snapshot.artifactDrafts,
+      },
+      updatedAt: memoryTime(),
+    });
+  },
+  async saveArtifactDraft(id, draft, ownerHash) {
+    const existing = memory.cases.get(id);
+    if (!existing || (ownerHash && existing.ownerHash !== ownerHash)) throw new Error("CASE_NOT_FOUND");
+    memory.cases.set(id, {
+      ...existing,
+      snapshot: {
+        ...existing.snapshot,
+        artifactDrafts: { ...existing.snapshot.artifactDrafts, "escalation-draft": draft },
+      },
+      updatedAt: memoryTime(),
     });
   },
   async listCases(limit, ownerHash) {
@@ -126,6 +154,42 @@ const pgStore: Store = {
       target: citizenCasesTable.id,
       set: { workflowId: snapshot.workflowId, snapshot, updatedAt: new Date() },
     });
+  },
+  async saveCaseProgress(id, snapshot, ownerHash) {
+    const condition = ownerHash
+      ? and(eq(citizenCasesTable.id, id), eq(citizenCasesTable.ownerHash, ownerHash))
+      : eq(citizenCasesTable.id, id);
+    const snapshotJson = JSON.stringify(snapshot);
+    const rows = await getDatabase().update(citizenCasesTable).set({
+      workflowId: snapshot.workflowId,
+      snapshot: sql<CaseSnapshot>`
+        (${snapshotJson}::jsonb - 'artifactDrafts')
+        || case
+          when ${citizenCasesTable.snapshot} ? 'artifactDrafts'
+          then jsonb_build_object('artifactDrafts', ${citizenCasesTable.snapshot}->'artifactDrafts')
+          else '{}'::jsonb
+        end
+      `,
+      updatedAt: new Date(),
+    }).where(condition).returning({ id: citizenCasesTable.id });
+    if (rows.length === 0) throw new Error("CASE_NOT_FOUND");
+  },
+  async saveArtifactDraft(id, draft, ownerHash) {
+    const condition = ownerHash
+      ? and(eq(citizenCasesTable.id, id), eq(citizenCasesTable.ownerHash, ownerHash))
+      : eq(citizenCasesTable.id, id);
+    const draftJson = JSON.stringify(draft);
+    const rows = await getDatabase().update(citizenCasesTable).set({
+      snapshot: sql<CaseSnapshot>`jsonb_set(
+        ${citizenCasesTable.snapshot},
+        '{artifactDrafts}',
+        coalesce(${citizenCasesTable.snapshot}->'artifactDrafts', '{}'::jsonb)
+          || jsonb_build_object('escalation-draft', ${draftJson}::jsonb),
+        true
+      )`,
+      updatedAt: new Date(),
+    }).where(condition).returning({ id: citizenCasesTable.id });
+    if (rows.length === 0) throw new Error("CASE_NOT_FOUND");
   },
   async listCases(limit, ownerHash) {
     const query = getDatabase().select().from(citizenCasesTable)

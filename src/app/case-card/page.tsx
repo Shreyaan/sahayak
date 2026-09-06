@@ -2,14 +2,12 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { use, useEffect, useState } from "react";
-import { artifactContent } from "@/lib/artifacts";
+import { artifactContent, renderArtifactBody } from "@/lib/artifacts";
 import { t as translate, tList, type Locale } from "@/lib/locale";
 import {
-  advanceDay,
-  applyCitizenReply,
-  currentNode,
   getCaseWorkflowDefinition,
   isClearedBlocker,
+  isSyntheticSeed,
   nodeNote,
   registerWorkflowDefinition,
   type CaseSnapshot,
@@ -17,10 +15,10 @@ import {
   type WorkflowNode,
 } from "@/lib/workflow";
 import { LanguageSwitcher } from "../language-switcher";
-import styles from "./case-card.module.css";
 import type { CitizenOutcome } from "@/lib/citizen-outcomes";
 import type { TrustMetadata, WorkflowJurisdiction } from "@/lib/trust";
 import { TrustDisclosure } from "../trust-disclosure";
+import { ArtifactDraftPanel } from "./artifact-draft-panel";
 
 function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -28,8 +26,8 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>{title}</h2>
+    <section className="border-t border-[var(--line)] pt-5">
+      <h2 className="m-0 text-lg font-extrabold">{title}</h2>
       {children}
     </section>
   );
@@ -48,15 +46,15 @@ function StepRow({
   const detail = translate(node.detail, locale);
 
   return (
-    <li className={styles.step}>
-      <strong>{title}</strong>
-      {detail !== title && <span>{detail}</span>}
+    <li className="border-l-[3px] border-[var(--marigold)] py-2 pl-4">
+      <strong className="block text-sm">{title}</strong>
+      {detail !== title && <span className="mt-1 block text-sm leading-relaxed text-[#536059]">{detail}</span>}
       {node.link && (
-        <a href={node.link.url} target="_blank" rel="noopener noreferrer">
+        <a className="mt-1 block break-all text-sm font-bold text-[var(--green)]" href={node.link.url} target="_blank" rel="noopener noreferrer">
           {node.link.url}
         </a>
       )}
-      {note && <em className={styles.note}>{note}</em>}
+      {note && <em className="mt-1 block text-sm font-bold not-italic text-[#7c2b21]">{note}</em>}
     </li>
   );
 }
@@ -119,12 +117,12 @@ export default function CaseCardPage({
   }, [caseIdParam, ownedSnapshot]);
 
   if (!caseIdParam) {
-    return <main className={styles.page}><a className={styles.back} href="/">{t("caseCard.back")}</a></main>;
+    return <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6"><a className="inline-flex min-h-11 items-center rounded-xl bg-[#eee5d8] px-4 text-sm font-extrabold text-[var(--green)] no-underline" href="/">{t("caseCard.back")}</a></main>;
   }
 
   if (!ownedSnapshot && !caseLoadFailed) {
     return (
-      <main className={styles.page}>
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6">
         <p role="status">{t("caseCard.loading")}</p>
       </main>
     );
@@ -132,9 +130,9 @@ export default function CaseCardPage({
 
   if (caseLoadFailed) {
     return (
-      <main className={styles.page}>
-        <a className={styles.back} href="/">{t("caseCard.back")}</a>
-        <p className={styles.warning} role="alert">{t("caseCard.unreadable")}</p>
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-6">
+        <a className="inline-flex min-h-11 items-center rounded-xl bg-[#eee5d8] px-4 text-sm font-extrabold text-[var(--green)] no-underline" href="/">{t("caseCard.back")}</a>
+        <p className="mt-4 rounded-xl border border-[#d9a79f] bg-[#fbeceb] p-4 font-bold text-[#7c2b21]" role="alert">{t("caseCard.unreadable")}</p>
       </main>
     );
   }
@@ -153,12 +151,55 @@ export default function CaseCardPage({
   const done = steps.filter((step) => step.state === "done");
   const current = steps.find((step) => step.state === "needs-you");
   const verifying = steps.filter((step) => step.state === "verifying");
+  const active = current ?? verifying[0];
   const blocked = steps.filter((step) => step.state === "blocked");
   // A blocker the recovery step already closed: proof the case survived it.
   const cleared = steps.filter((step) => isClearedBlocker(snapshot, step.node.id));
   const complete = steps.every((step) => step.state === "done" || step.state === "pending")
     && steps.some((step) => step.node.type === "case-complete" && step.state === "done");
-  const visits = seed.nodes.filter((node) => node.visit);
+  const currentVisit = active?.node.visit;
+  const referenceNumbers = (snapshot.reports ?? []).flatMap(({ referenceNumber }) => referenceNumber ? [referenceNumber] : []);
+  const grievanceNeedsPreparation = snapshot.artifacts.includes("escalation-draft")
+    && !snapshot.artifactDrafts?.["escalation-draft"];
+  const ui = locale === "hi" ? {
+    status: "केस की स्थिति",
+    next: "अगला काम",
+    progress: "प्रगति",
+    documents: "दस्तावेज़",
+    continue: "इस काम को जारी रखें",
+    preparing: "तैयारी",
+    history: "पूरा इतिहास और प्रमाण देखें",
+    historyHint: "पूरे हुए कदम, रुकावटें, दर्ज जवाब और नतीजे",
+    responses: "पोर्टल और डेस्क के जवाब",
+    outcomes: "नतीजे",
+    references: "संदर्भ संख्याएँ",
+    noReferences: "अभी कोई संदर्भ संख्या दर्ज नहीं है",
+    available: "तैयार दस्तावेज़",
+    noDocuments: "अभी कोई दस्तावेज़ तैयार नहीं है। यात्रा जारी रखने पर दस्तावेज़ यहाँ दिखाई देंगे।",
+    download: "Word दस्तावेज़ डाउनलोड करें",
+    prepareGrievance: "अपनी शिकायत तैयार करें",
+    prepareGrievanceDetail: "अपने दर्ज केस विवरण से AI मसौदा बनाएँ, फिर उसे पढ़कर सुधारें और डाउनलोड करें।",
+    prepareGrievanceAction: "शिकायत तैयार करें",
+  } : {
+    status: "Case status",
+    next: "Next action",
+    progress: "Progress",
+    documents: "Documents",
+    continue: "Continue this action",
+    preparing: "Prepare before you go",
+    history: "View full history and evidence",
+    historyHint: "Completed steps, setbacks, recorded responses and outcomes",
+    responses: "Portal and desk responses",
+    outcomes: "Outcomes",
+    references: "Reference numbers",
+    noReferences: "No reference number recorded yet",
+    available: "Available documents",
+    noDocuments: "No documents are ready yet. They will appear here as you continue the journey.",
+    download: "Download Word document",
+    prepareGrievance: "Prepare your grievance",
+    prepareGrievanceDetail: "Use your recorded case details to create an AI draft, then review, edit and download it.",
+    prepareGrievanceAction: "Prepare grievance",
+  };
   const outcomeLabels = locale === "hi" ? {
     awareness: "यात्रा शुरू हुई",
     worked: "बताए अनुसार हुआ",
@@ -186,205 +227,111 @@ export default function CaseCardPage({
   };
 
   return (
-    <main className={styles.page}>
-      <div className={styles.toolbar}>
-        <a className={styles.back} href={`/?caseId=${encodeURIComponent(caseIdParam)}`}>
+    <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-5 sm:px-6 sm:py-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <a className="inline-flex min-h-11 items-center rounded-xl border border-[var(--line)] bg-[#eee5d8] px-4 text-sm font-extrabold text-[var(--green)] no-underline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)]" href={`/?caseId=${encodeURIComponent(caseIdParam)}`}>
           {t("caseCard.continue")}
         </a>
-        <div className={styles.toolbarEnd}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <LanguageSwitcher />
-          <button className={styles.print} type="button" onClick={() => window.print()}>
+          <button className="min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-4 text-sm font-extrabold text-[#2f250f] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)]" type="button" onClick={() => window.print()}>
             {t("caseCard.print")}
           </button>
         </div>
       </div>
 
-      <article className={styles.card}>
-        <header className={styles.head}>
-          <p className={styles.eyebrow}>{t("caseCard.eyebrow")}</p>
-          <h1>{translate(seed.title, locale)}</h1>
-          <p className={styles.subtitle}>{translate(seed.subtitle, locale)}</p>
-          <p className={styles.meta}>
-            {t("caseCard.day", { day: snapshot.day })}
-          </p>
+      <article className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[#fffdf9] shadow-[0_14px_40px_rgba(52,43,27,0.07)] print:border-0 print:shadow-none">
+        <header className="border-b border-[var(--line)] px-5 py-6 sm:px-7">
+          <p className="m-0 text-[.7rem] font-extrabold uppercase tracking-[.14em] text-[var(--green)]">{t("caseCard.eyebrow")}</p>
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="m-0 text-2xl font-extrabold leading-tight">{translate(seed.title, locale)}</h1>
+              <p className="mt-1 text-sm leading-relaxed text-[#536059]">{translate(seed.subtitle, locale)}</p>
+            </div>
+            {isSyntheticSeed(snapshot.workflowId) && <p className="m-0 w-fit rounded-full bg-[#fff1cf] px-3 py-1 text-xs font-extrabold text-[#79540d]">{locale === "hi" ? "कृत्रिम उदाहरण यात्रा और रिकॉर्ड" : "Synthetic example journey and records"}</p>}
+          </div>
+          <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="rounded-xl bg-[#f2f5f2] p-3"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.status}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{complete ? t("caseCard.status.complete") : t("caseCard.status.inProgress")}</dd></div>
+            <div className="rounded-xl bg-[#f2f5f2] p-3"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.progress}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{done.length} / {steps.length}</dd></div>
+            <div className="col-span-2 rounded-xl bg-[#f2f5f2] p-3 sm:col-span-1"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.documents}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{snapshot.artifacts.length}</dd></div>
+          </dl>
+          <div className="mt-3">{ownedTrust && ownedJurisdiction && <TrustDisclosure trust={ownedTrust} jurisdiction={ownedJurisdiction} locale={locale} />}</div>
         </header>
 
-        {ownedTrust && ownedJurisdiction && <TrustDisclosure trust={ownedTrust} jurisdiction={ownedJurisdiction} locale={locale} />}
+        <div className="grid gap-7 px-5 py-6 sm:px-7">
+          <section aria-labelledby="next-action-title">
+            <p className="m-0 text-[.7rem] font-extrabold uppercase tracking-[.14em] text-[var(--green)]">{ui.next}</p>
+            {grievanceNeedsPreparation ? <div className="mt-2 rounded-2xl border-l-4 border-[var(--green)] bg-[#eef5f0] p-4 sm:p-5">
+              <h2 className="m-0 text-xl font-extrabold" id="next-action-title">{ui.prepareGrievance}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-[#45534c]">{ui.prepareGrievanceDetail}</p>
+              <a className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[var(--green)] px-4 text-sm font-extrabold text-white no-underline print:hidden" href="#artifact-escalation-draft">{ui.prepareGrievanceAction} →</a>
+            </div> : active ? <div className="mt-2 rounded-2xl border-l-4 border-[var(--green)] bg-[#eef5f0] p-4 sm:p-5">
+              <h2 className="m-0 text-xl font-extrabold" id="next-action-title">{translate(active.node.title, locale)}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-[#45534c]">{translate(active.node.detail, locale)}</p>
+              <p className="mt-2 text-sm font-extrabold text-[#7c2b21]">{active.state === "verifying" ? t("caseCard.current.verifying") : translate(active.node.ask, locale)}</p>
+              <a className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[var(--green)] px-4 text-sm font-extrabold text-white no-underline print:hidden" href={`/?caseId=${encodeURIComponent(caseIdParam)}`}>{ui.continue} →</a>
+            </div> : <p className="mt-2 text-sm text-[#536059]">{t("caseCard.current.empty")}</p>}
+          </section>
 
-        <Section title={t("caseCard.completed.title")}>
-          {done.length > 0 ? (
-            <ol className={styles.steps}>
-              {done.map((step) => (
-                <StepRow key={step.node.id} node={step.node} locale={locale} />
-              ))}
-            </ol>
-          ) : (
-            <p className={styles.empty}>{t("caseCard.completed.empty")}</p>
-          )}
-        </Section>
+          {currentVisit && <section className="rounded-2xl border border-[var(--line)] bg-white p-4 sm:p-5" aria-labelledby="visit-title">
+            <p className="m-0 text-[.7rem] font-extrabold uppercase tracking-[.14em] text-[var(--green)]">{ui.preparing}</p>
+            <h2 className="mt-1 text-lg font-extrabold" id="visit-title">{translate(currentVisit.office, locale)}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-[#536059]">{translate(currentVisit.why, locale)}</p>
+            <dl className="mt-4 grid gap-3 text-sm">
+              <div><dt className="text-xs font-extrabold uppercase tracking-wide text-[var(--green)]">{t("caseCard.visits.carry")}</dt><dd className="mt-1 leading-relaxed">{tList(currentVisit.carry, locale).join(" · ")}</dd></div>
+              <div><dt className="text-xs font-extrabold uppercase tracking-wide text-[var(--green)]">{t("caseCard.visits.script")}</dt><dd className="mt-1 rounded-xl bg-[#fff8e8] p-3 font-bold leading-relaxed">“{translate(currentVisit.script, locale)}”</dd></div>
+              <div className="grid grid-cols-2 gap-3"><div><dt className="text-xs font-extrabold uppercase tracking-wide text-[var(--green)]">{t("caseCard.visits.expect")}</dt><dd className="mt-1">{translate(currentVisit.expect, locale)}</dd></div><div><dt className="text-xs font-extrabold uppercase tracking-wide text-[var(--green)]">{t("caseCard.visits.collect")}</dt><dd className="mt-1">{translate(currentVisit.collect, locale)}</dd></div></div>
+            </dl>
+            <p className="mb-0 mt-4 text-xs font-bold text-[#735c37]">{t("caseCard.visits.noAgent")}</p>
+          </section>}
 
-        <Section title={t("caseCard.current.title")}>
-          {current ? (
-            <ol className={styles.steps}>
-              <StepRow
-                node={current.node}
-                locale={locale}
-                note={translate(current.node.ask, locale)}
-              />
-            </ol>
-          ) : (
-            <p className={styles.empty}>{t("caseCard.current.empty")}</p>
-          )}
-          {verifying.length > 0 && (
-            <ol className={styles.steps}>
-              {verifying.map((step) => (
-                <StepRow
-                  key={step.node.id}
-                  node={step.node}
-                  locale={locale}
-                  note={t("caseCard.current.verifying")}
-                />
-              ))}
-            </ol>
-          )}
-        </Section>
-
-        <Section title={t("caseCard.blocked.title")}>
-          {blocked.length > 0 ? (
-            <ol className={styles.steps}>
-              {blocked.map((step) => (
-                <StepRow
-                  key={step.node.id}
-                  node={step.node}
-                  locale={locale}
-                  note={noteFor(step.node.id)}
-                />
-              ))}
-            </ol>
-          ) : (
-            <p className={styles.empty}>{t("caseCard.blocked.empty")}</p>
-          )}
-        </Section>
-
-        {cleared.length > 0 && (
-          <Section title={t("caseCard.cleared.title")}>
-            <ol className={styles.steps}>
-              {cleared.map((step) => (
-                <StepRow
-                  key={step.node.id}
-                  node={step.node}
-                  locale={locale}
-                  note={noteFor(step.node.id)}
-                />
-              ))}
-            </ol>
-          </Section>
-        )}
-
-        <Section title={t("caseCard.visits.title")}>
-          {visits.length > 0 ? (
-            visits.map((node) => {
-              const visit = node.visit;
-              if (!visit) return null;
-
-              return (
-                <div key={node.id} className={styles.visit}>
-                  <h3>{translate(visit.office, locale)}</h3>
-                  <p className={styles.why}>{translate(visit.why, locale)}</p>
-                  <dl className={styles.pairs}>
-                    <dt>{t("caseCard.visits.carry")}</dt>
-                    <dd>{tList(visit.carry, locale).join(" · ")}</dd>
-                    <dt>{t("caseCard.visits.script")}</dt>
-                    <dd>“{translate(visit.script, locale)}”</dd>
-                    <dt>{t("caseCard.visits.expect")}</dt>
-                    <dd>{translate(visit.expect, locale)}</dd>
-                    <dt>{t("caseCard.visits.collect")}</dt>
-                    <dd>{translate(visit.collect, locale)}</dd>
-                  </dl>
-                </div>
-              );
-            })
-          ) : (
-            <p className={styles.empty}>{t("caseCard.visits.empty")}</p>
-          )}
-          <p className={styles.empty}>{t("caseCard.visits.noAgent")}</p>
-        </Section>
-
-        <Section title={t("caseCard.artifacts.title")}>
+        <Section title={ui.available}>
           {snapshot.artifacts.length > 0 ? (
             snapshot.artifacts.map((id) => {
               const artifact = artifactContent[id];
 
               return (
-                <div key={id} className={styles.artifact}>
-                  <h3>{translate(artifact.title, locale)}</h3>
-                  <p className={styles.why}>{translate(artifact.subtitle, locale)}</p>
-                  <ul className={styles.body}>
-                    {tList(artifact.body, locale).map((line, index) => (
-                      <li key={`${id}-${index}`}>{line}</li>
-                    ))}
-                  </ul>
-                  <p className={styles.draftLabel}>{t("caseCard.artifacts.draftLabel")}</p>
+                <div key={id} id={`artifact-${id}`} className="mt-3 scroll-mt-4 rounded-2xl border border-[var(--line)] bg-white p-4 sm:p-5">
+                  <h3 className="m-0 text-base font-extrabold">{translate(artifact.title, locale)}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-[#536059]">{translate(artifact.subtitle, locale)}</p>
+                  {id === "escalation-draft" ? <ArtifactDraftPanel
+                    caseId={caseIdParam}
+                    initialDraft={snapshot.artifactDrafts?.[id]}
+                    locale={locale}
+                    onDraftChange={(draft) => setOwnedSnapshot((currentSnapshot) => currentSnapshot ? {
+                      ...currentSnapshot,
+                      artifactDrafts: { ...currentSnapshot.artifactDrafts, [id]: draft },
+                    } : currentSnapshot)}
+                  /> : <>
+                    <ul className="mt-3 grid gap-1 pl-5 text-sm leading-relaxed">
+                      {renderArtifactBody(id, snapshot, locale).map((line, index) => <li key={`${id}-${index}`}>{line}</li>)}
+                    </ul>
+                    <a className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[var(--green)] px-4 text-sm font-extrabold text-white no-underline print:hidden" href={`/api/cases/${encodeURIComponent(caseIdParam)}/artifacts/${encodeURIComponent(id)}?locale=${locale}`}>{ui.download}</a>
+                  </>}
+                  <p className="mb-0 mt-3 text-xs font-bold text-[#7a530a]">{t("caseCard.artifacts.draftLabel")}</p>
                 </div>
               );
             })
           ) : (
-            <p className={styles.empty}>{t("caseCard.artifacts.empty")}</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#536059]">{ui.noDocuments}</p>
           )}
         </Section>
 
-        <Section title={t("caseCard.status.title")}>
-          <dl className={styles.pairs}>
-            <dt>{t("caseCard.status.journey")}</dt>
-            <dd>
-              {translate(seed.title, locale)} ({translate(seed.subtitle, locale)})
-            </dd>
-            <dt>{t("caseCard.status.caseStatus")}</dt>
-            <dd>{complete ? t("caseCard.status.complete") : t("caseCard.status.inProgress")}</dd>
-            <dt>{t("caseCard.status.blockersCleared")}</dt>
-            <dd>{cleared.length}</dd>
-            <dt>{t("caseCard.status.stepsDone")}</dt>
-            <dd>
-              {done.length} / {steps.length}
-            </dd>
-            <dt>{t("caseCard.status.day")}</dt>
-            <dd>{snapshot.day}</dd>
-            <dt>{t("caseCard.status.artifacts")}</dt>
-            <dd>{snapshot.artifacts.length}</dd>
-            <dt>{t("caseCard.status.references")}</dt>
-            <dd>{t("caseCard.status.referencesValue")}</dd>
-          </dl>
-        </Section>
-
-        {caseIdParam && (
-          <Section title={locale === "hi" ? "नतीजे और प्रमाण" : "Outcomes and evidence"}>
-            {outcomesLoadFailed ? (
-              <p className={styles.warning} role="alert">
-                {locale === "hi" ? "नतीजे अभी उपलब्ध नहीं हैं। फिर से कोशिश करें।" : "Outcome evidence is unavailable. Please try again."}
-              </p>
-            ) : outcomes.length > 0 ? (
-              <ol className={styles.steps}>
-                {outcomes.map((outcome) => {
-                  const step = outcome.stepId ? seed.nodes.find(({ id }) => id === outcome.stepId) : undefined;
-                  return (
-                    <li className={styles.step} key={outcome.id}>
-                      <strong>{outcomeLabels[outcome.kind]}</strong>
-                      <span>{formatTime(outcome.occurredAt)}</span>
-                      {step ? <span>{translate(step.title, locale)}</span> : null}
-                      {outcome.detail ? <em className={styles.note}>{outcome.detail}</em> : null}
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <p className={styles.empty}>
-                {locale === "hi" ? "अभी कोई नतीजा दर्ज नहीं है।" : "No outcome evidence has been recorded yet."}
-              </p>
-            )}
-          </Section>
-        )}
+          <details className="rounded-2xl border border-[var(--line)] bg-white print:border-0">
+            <summary className="cursor-pointer p-4 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)] sm:p-5 print:hidden">
+              <span className="ml-2 inline-block align-middle"><strong className="block text-base">{ui.history}</strong><span className="mt-1 block text-sm text-[#536059]">{ui.historyHint}</span></span>
+            </summary>
+            <div className="grid gap-6 border-t border-[var(--line)] p-4 sm:p-5 print:!grid print:border-0">
+              <div><h3 className="m-0 text-sm font-extrabold">{t("caseCard.completed.title")}</h3>{done.length > 0 ? <ol className="mt-2 grid gap-1 p-0">{done.map((step) => <StepRow key={step.node.id} node={step.node} locale={locale} />)}</ol> : <p className="mt-2 text-sm text-[#536059]">{t("caseCard.completed.empty")}</p>}</div>
+              {blocked.length > 0 && <div><h3 className="m-0 text-sm font-extrabold">{t("caseCard.blocked.title")}</h3><ol className="mt-2 grid gap-1 p-0">{blocked.map((step) => <StepRow key={step.node.id} node={step.node} locale={locale} note={noteFor(step.node.id)} />)}</ol></div>}
+              {cleared.length > 0 && <div><h3 className="m-0 text-sm font-extrabold">{t("caseCard.cleared.title")}</h3><ol className="mt-2 grid gap-1 p-0">{cleared.map((step) => <StepRow key={step.node.id} node={step.node} locale={locale} note={noteFor(step.node.id)} />)}</ol></div>}
+              <div><h3 className="m-0 text-sm font-extrabold">{ui.responses}</h3>{(snapshot.reports ?? []).length > 0 ? <ol className="mt-2 grid gap-2 p-0">{(snapshot.reports ?? []).map((report, index) => { const step = seed.nodes.find(({ id }) => id === report.stepId); return <li className="border-l-[3px] border-[var(--marigold)] py-2 pl-4 text-sm" key={`${report.recordedAt}-${index}`}><strong className="block">{step ? translate(step.title, locale) : report.stepId}</strong><span className="mt-1 block text-[#536059]">{locale === "hi" ? `जवाब की तारीख: ${report.responseDate}` : `Response date: ${report.responseDate}`}</span><span className="mt-1 block">{report.response}</span>{report.referenceNumber && <span className="mt-1 block">{locale === "hi" ? "संदर्भ" : "Reference"}: {report.referenceNumber}</span>}{report.evidence && <em className="mt-1 block font-bold not-italic text-[#7c2b21]">{locale === "hi" ? "प्रमाण का नोट" : "Evidence note"}: {report.evidence}</em>}</li>; })}</ol> : <p className="mt-2 text-sm text-[#536059]">{locale === "hi" ? "अभी कोई जवाब दर्ज नहीं है।" : "No portal or desk response has been recorded yet."}</p>}</div>
+              <div><h3 className="m-0 text-sm font-extrabold">{ui.outcomes}</h3>{outcomesLoadFailed ? <p className="mt-2 rounded-xl bg-[#fbeceb] p-3 text-sm font-bold text-[#7c2b21]" role="alert">{locale === "hi" ? "नतीजे अभी उपलब्ध नहीं हैं। फिर से कोशिश करें।" : "Outcome evidence is unavailable. Please try again."}</p> : outcomes.length > 0 ? <ol className="mt-2 grid gap-2 p-0">{outcomes.map((outcome) => { const step = outcome.stepId ? seed.nodes.find(({ id }) => id === outcome.stepId) : undefined; return <li className="border-l-[3px] border-[var(--marigold)] py-2 pl-4 text-sm" key={outcome.id}><strong className="block">{outcomeLabels[outcome.kind]}</strong><span className="mt-1 block text-[#536059]">{formatTime(outcome.occurredAt)}</span>{step && <span className="mt-1 block">{translate(step.title, locale)}</span>}{outcome.detail && <em className="mt-1 block font-bold not-italic text-[#7c2b21]">{outcome.detail}</em>}</li>; })}</ol> : <p className="mt-2 text-sm text-[#536059]">{locale === "hi" ? "अभी कोई नतीजा दर्ज नहीं है।" : "No outcome evidence has been recorded yet."}</p>}</div>
+              <div><h3 className="m-0 text-sm font-extrabold">{ui.references}</h3><p className="mt-2 text-sm text-[#536059]">{referenceNumbers.join(" · ") || ui.noReferences}</p></div>
+            </div>
+          </details>
+        </div>
       </article>
-
     </main>
   );
 }

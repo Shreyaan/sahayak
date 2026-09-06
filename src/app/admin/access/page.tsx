@@ -75,6 +75,7 @@ export default async function AdminAccessPage() {
                 <div>
                   <h3 className="text-xl font-bold text-[#10251c]">{workflow.definition.title.en}</h3>
                   <p className="mt-1 text-sm text-[#59675f]">{workflow.definition.title.hi}</p>
+                  {(workflow.workflowId === "scholarship" || workflow.workflowId === "bereavement") && <span className="mt-2 inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-xs font-bold text-[#79540d]">Synthetic example workflow</span>}
                 </div>
                 <span className="shrink-0 rounded-full bg-[#eaf3ed] px-3 py-1 text-xs font-bold text-[#2d7255]">
                   v{workflow.version}

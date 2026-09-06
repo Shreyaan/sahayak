@@ -1,22 +1,22 @@
-import type { Localized } from "./locale";
-import type { ArtifactId } from "./workflow";
+import { t, type Locale, type Localized } from "./locale";
+import type { ArtifactId, CaseSnapshot } from "./workflow";
 
 export type ArtifactContent = {
   title: Localized;
   subtitle: Localized;
-  /** Body lines of the generated demonstration draft. All values are synthetic. */
+  /** Body lines of the generated example draft. Seed values are synthetic. */
   body: Localized[];
 };
 
 /**
- * Generated demonstration drafts. These are populated only with synthetic
+ * Generated example drafts. Bundled values are synthetic
  * information and are never submitted anywhere.
  */
 export const artifactContent: Record<ArtifactId, ArtifactContent> = {
   "correction-declaration": {
     title: { hi: "नाम सुधार घोषणा", en: "Name correction declaration" },
     subtitle: {
-      hi: "Name correction declaration",
+      hi: "दो वर्तनी एक ही व्यक्ति की होने की घोषणा",
       en: "States that two spellings are one person",
     },
     body: [
@@ -45,7 +45,7 @@ export const artifactContent: Record<ArtifactId, ArtifactContent> = {
   "bank-letter": {
     title: { hi: "बैंक को पत्र", en: "Letter to the bank" },
     subtitle: {
-      hi: "Bank claim follow-up letter",
+      hi: "लौटाए गए बैंक दावे पर अनुवर्ती पत्र",
       en: "Follow-up on a returned bank claim",
     },
     body: [
@@ -62,19 +62,19 @@ export const artifactContent: Record<ArtifactId, ArtifactContent> = {
         en: "Reason given: the signature did not match",
       },
       {
-        hi: "निवेदन: संलग्न सुधार घोषणा के आधार पर दावा पुनः जाँचा जाए।",
-        en: "Request: please review the claim again on the basis of the enclosed correction declaration.",
+        hi: "निवेदन: लौटाए गए दावे की दोबारा जाँच करके निर्णय लिखित में दिया जाए।",
+        en: "Request: please review the returned claim again and provide the decision in writing.",
       },
       {
-        hi: "संलग्न: नाम सुधार घोषणा, पूर्व पावती रसीद",
-        en: "Enclosed: the name correction declaration, the earlier acknowledgement slip",
+        hi: "जमा करने से पहले: केवल उन्हीं दस्तावेज़ों की सूची लिखें जिन्हें आप वास्तव में संलग्न कर रहे हैं।",
+        en: "Before submitting: list only the documents you are actually attaching.",
       },
     ],
   },
   "rti-draft": {
     title: { hi: "RTI आवेदन मसौदा", en: "RTI application draft" },
     subtitle: {
-      hi: "RTI application draft",
+      hi: "दावे पर हुई कार्रवाई की जानकारी माँगता है",
       en: "Asks what has been done on the claim",
     },
     body: [
@@ -95,15 +95,15 @@ export const artifactContent: Record<ArtifactId, ArtifactContent> = {
         en: "This is a case of ordinary delay. The 48-hour life-and-liberty provision does not apply here.",
       },
       {
-        hi: "स्थिति: क़तार में — भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
-        en: "Status: queued — your approval will be taken before it is sent.",
+        hi: "स्थिति: केवल मसौदा — सहायक ने इसे जमा नहीं किया है।",
+        en: "Status: draft only — Sahayak has not submitted it.",
       },
     ],
   },
   "npci-checklist": {
     title: { hi: "बैंक सीडिंग जाँच-सूची", en: "Bank seeding checklist" },
     subtitle: {
-      hi: "Bank / NPCI seeding checklist",
+      hi: "शाखा में क्या पूछना है",
       en: "What to ask for at the branch",
     },
     body: [
@@ -112,7 +112,7 @@ export const artifactContent: Record<ArtifactId, ArtifactContent> = {
         en: "1. Give the Aadhaar seeding request at the branch.",
       },
       {
-        hi: "2. NPCI mapping सक्रिय है या नहीं, यह लिखित में पुछिए।",
+        hi: "2. NPCI mapping सक्रिय है या नहीं, यह लिखित में पूछिए।",
         en: "2. Ask in writing whether NPCI mapping is active or not.",
       },
       {
@@ -132,7 +132,7 @@ export const artifactContent: Record<ArtifactId, ArtifactContent> = {
   "escalation-draft": {
     title: { hi: "NSP शिकायत मसौदा", en: "NSP grievance draft" },
     subtitle: {
-      hi: "Scholarship grievance draft",
+      hi: "जारी हुई लेकिन खाते में न पहुँची छात्रवृत्ति के लिए",
       en: "For a scholarship released but never credited",
     },
     body: [
@@ -145,17 +145,58 @@ export const artifactContent: Record<ArtifactId, ArtifactContent> = {
         en: "Subject: Amount not credited after 'Released to PFMS'",
       },
       {
-        hi: "पाया गया कारण: बैंक स्तर पर भुगतान लौटना (NPCI mapping न होना)",
-        en: "Reason found: the payment bounced at the bank end (NPCI mapping missing)",
+        hi: "केस रिकॉर्ड में नागरिक द्वारा दर्ज जवाब यहाँ जोड़ा जाएगा।",
+        en: "The citizen-reported response from the case record will be inserted here.",
       },
       {
-        hi: "की गई कार्रवाई: शाखा में सीडिंग अनुरोध, पावती संलग्न।",
-        en: "Action taken: a seeding request at the branch, acknowledgement enclosed.",
+        hi: "केवल नागरिक द्वारा दर्ज संदर्भ और प्रमाण का उल्लेख किया जाएगा।",
+        en: "Only references and evidence recorded by the citizen will be mentioned.",
       },
       {
-        hi: "स्थिति: क़तार में — भेजने से पहले आपकी मंज़ूरी ली जाएगी।",
-        en: "Status: queued — your approval will be taken before it is sent.",
+        hi: "स्थिति: केवल मसौदा — सहायक ने इसे जमा नहीं किया है।",
+        en: "Status: draft only — Sahayak has not submitted it.",
       },
     ],
   },
 };
+
+function displayDate(value: string, locale: Locale): string {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  if (locale === "hi") {
+    return new Intl.DateTimeFormat("hi-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+      .format(new Date(Date.UTC(year, month - 1, day)));
+  }
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${day} ${months[month - 1]} ${year}`;
+}
+
+/** Renders an artifact from the immutable template plus facts the citizen actually recorded. */
+export function renderArtifactBody(id: ArtifactId, snapshot: CaseSnapshot, locale: Locale): string[] {
+  if (id !== "escalation-draft") return artifactContent[id].body.map((line) => t(line, locale));
+
+  const reports = snapshot.reports ?? [];
+  const report = [...reports].reverse().find(({ stepId }) => stepId === "verify-again")
+    ?? [...reports].reverse().find(({ stepId }) => stepId === "pfms-trace");
+  const acknowledgement = [...reports].reverse().find(({ stepId }) => stepId === "bank-seeding");
+  const fallback = artifactContent[id].body.map((line) => t(line, locale));
+  if (!report) return fallback;
+
+  return locale === "hi" ? [
+    "पोर्टल: राष्ट्रीय छात्रवृत्ति पोर्टल (नमूना)",
+    "विषय: 'Released to PFMS' के बाद राशि जमा न होना",
+    `नागरिक द्वारा ${displayDate(report.responseDate, locale)} को दर्ज जवाब: ${report.response}`,
+    `संदर्भ संख्या: ${acknowledgement?.referenceNumber || report.referenceNumber || "दर्ज नहीं की गई"}`,
+    `प्रमाण का नोट: ${acknowledgement?.evidence || report.evidence || "दर्ज नहीं किया गया"}`,
+    "निवेदन: कृपया भुगतान की स्थिति जाँचकर लिखित जवाब और संदर्भ संख्या दें।",
+    "स्थिति: केवल मसौदा — सहायक ने इसे जमा नहीं किया है।",
+  ] : [
+    "Portal: National Scholarship Portal (sample)",
+    "Subject: Amount not credited after 'Released to PFMS'",
+    `Citizen-reported response on ${displayDate(report.responseDate, locale)}: ${report.response}`,
+    `Reference number: ${acknowledgement?.referenceNumber || report.referenceNumber || "Not recorded"}`,
+    `Evidence note: ${acknowledgement?.evidence || report.evidence || "Not recorded"}`,
+    "Request: please check the payment status and provide a written response and reference number.",
+    "Status: draft only — Sahayak has not submitted it.",
+  ];
+}

@@ -3,11 +3,11 @@
 import { useLocale, useTranslations } from "next-intl";
 import { useQueryState } from "nuqs";
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
-import { artifactContent } from "@/lib/artifacts";
 import { t as translate, tList, type Locale } from "@/lib/locale";
 import { stopMediaStream } from "@/lib/media";
 import {
   getCaseWorkflowDefinition,
+  isSyntheticSeed,
   nodeNote,
   registerWorkflowDefinition,
   type CaseSnapshot,
@@ -15,12 +15,20 @@ import {
 } from "@/lib/workflow";
 import { CitizenHome, type StoredCase } from "./citizen-home";
 import { ContributorPanel } from "./contributor-panel";
+import { DeskResponseForm } from "./desk-response-form";
 import { LanguageSwitcher } from "./language-switcher";
+import { JourneyArtifacts } from "./journey-artifacts";
 import { ResolutionOutcomeForm, StepOutcomeForm } from "./step-outcome-form";
 
 /** A saved Case Card is loaded through the browser-private case API. */
 function caseCardHref(caseId: string): string {
   return `/case-card?caseId=${encodeURIComponent(caseId)}`;
+}
+
+/** A reply belongs to the step that produced it, never to a newly opened action. */
+export function transitionFeedback(reply: string, actedStepId: string | undefined, snapshot: CaseSnapshot): string {
+  const nextStepId = snapshot.nodes.find((node) => node.state === "needs-you" || node.state === "verifying")?.id;
+  return actedStepId && nextStepId && actedStepId !== nextStepId ? "" : reply;
 }
 
 function VisitCard({ node, locale }: { node: WorkflowDefinition["nodes"][number]; locale: Locale }) {
@@ -139,12 +147,11 @@ export function HomeContent() {
    * arrives already written in the active language, and is shown as the latest
    * update under the current action.
    */
-  async function ask(body: Record<string, unknown>) {
-    if (busy || !caseSnapshot) return;
+  async function ask(body: Record<string, unknown>): Promise<boolean> {
+    if (busy || !caseSnapshot) return false;
 
     setBusy(true);
-    const actedStepId = caseSnapshot.nodes.find((node) =>
-      node.state === (body.action === "advance-day" ? "verifying" : "needs-you"))?.id;
+    const actedStepId = caseSnapshot.nodes.find((node) => node.state === "needs-you" || node.state === "verifying")?.id;
 
     try {
       const response = await fetch("/api/chat", {
@@ -156,13 +163,15 @@ export function HomeContent() {
       if (!response.ok) throw new Error(result.error || "Request failed");
 
       setCaseSnapshot(result.caseSnapshot);
-      setFeedback(result.reply);
+      setFeedback(transitionFeedback(result.reply, actedStepId, result.caseSnapshot));
       const actedStep = actedStepId
         ? result.caseSnapshot.nodes.find((node: { id: string }) => node.id === actedStepId)
         : undefined;
-      if (actedStep?.state === "done") setReportStepId(actedStepId);
+      if (body.action === "record-desk-response" || actedStep?.state === "done") setReportStepId(actedStepId);
+      return true;
     } catch {
       setFeedback(text("error.request"));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -170,10 +179,6 @@ export function HomeContent() {
 
   function answerWithIntent(intent: "affirmative" | "negative") {
     return ask({ action: "reply", intent });
-  }
-
-  function advanceDay() {
-    return ask({ action: "advance-day" });
   }
 
   function send(event: FormEvent) {
@@ -369,15 +374,7 @@ export function HomeContent() {
               </div>
             </div>
 
-            <div className="demo-clock">
-              <div>
-                <strong>{text("case.day", { day: caseSnapshot.day })}</strong>
-                <small>{text("case.demoTime")}</small>
-              </div>
-              <button className="secondary-action" type="button" disabled={busy || !waiting} onClick={() => void advanceDay()}>
-                {text("case.advanceDay")}
-              </button>
-            </div>
+            {isSyntheticSeed(caseSnapshot.workflowId) && <p className="mt-4 w-fit rounded-full bg-[#fff1cf] px-3 py-1 text-xs font-extrabold text-[#79540d]">{locale === "hi" ? "कृत्रिम उदाहरण यात्रा और रिकॉर्ड" : "Synthetic example journey and records"}</p>}
 
             <section className="action-panel" aria-live="polite">
               {current ? (
@@ -395,7 +392,13 @@ export function HomeContent() {
                     </p>
                   )}
                   <VisitCard node={current} locale={locale} />
-                  <div className="action-buttons">
+                  {current.report ? <DeskResponseForm
+                    busy={busy}
+                    key={current.id}
+                    locale={locale}
+                    node={current}
+                    onSubmit={(deskResponse) => ask({ action: "record-desk-response", deskResponse })}
+                  /> : <div className="action-buttons">
                     <button
                       className="primary-action"
                       type="button"
@@ -423,7 +426,7 @@ export function HomeContent() {
                     >
                       🔊 {text("action.listen")}
                     </button>
-                  </div>
+                  </div>}
                 </>
               ) : waiting ? (
                 <p className="waiting" role="status">
@@ -449,7 +452,7 @@ export function HomeContent() {
                 </p>
               )}
 
-              {caseId && reportStepId && (
+              {caseId && reportStepId && !current?.report && (
                 <StepOutcomeForm caseId={caseId} stepId={reportStepId} locale={locale} />
               )}
 
@@ -492,20 +495,16 @@ export function HomeContent() {
               })}
             </ol>
 
-            {caseSnapshot.artifacts.length > 0 && (
-              <div className="artifacts">
-                <p className="eyebrow">{text("case.artifacts")}</p>
-                <ul>
-                  {caseSnapshot.artifacts.map((id) => (
-                    <li key={id}>
-                      {caseId ? <a href={caseCardHref(caseId)}>
-                        <strong>{translate(artifactContent[id].title, locale)}</strong>
-                        <small>{translate(artifactContent[id].subtitle, locale)}</small>
-                      </a> : <><strong>{translate(artifactContent[id].title, locale)}</strong><small>{translate(artifactContent[id].subtitle, locale)}</small></>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {caseId && caseSnapshot.artifacts.length > 0 && (
+              <JourneyArtifacts
+                caseId={caseId}
+                locale={locale}
+                snapshot={caseSnapshot}
+                onDraftChange={(draft) => setCaseSnapshot((currentSnapshot) => currentSnapshot ? {
+                  ...currentSnapshot,
+                  artifactDrafts: { ...currentSnapshot.artifactDrafts, "escalation-draft": draft },
+                } : currentSnapshot)}
+              />
             )}
 
             {caseId && <a className="case-card-link" href={caseCardHref(caseId)}>{text("case.openCaseCard")}</a>}
@@ -515,7 +514,7 @@ export function HomeContent() {
             </button>
           </section>
 
-          <form className="answer-form" onSubmit={send}>
+          {!current?.report && <form className="answer-form" onSubmit={send}>
             <button
               className={`mic ${recording ? "recording" : ""}`}
               type="button"
@@ -535,7 +534,7 @@ export function HomeContent() {
             <button className="send" disabled={busy || !answer.trim()} type="submit">
               {text("answer.send")}
             </button>
-          </form>
+          </form>}
         </>
       )}
 

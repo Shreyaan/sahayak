@@ -15,7 +15,7 @@
     "current": {
       "title": "Current action",
       "empty": "No action pending",
-      "verifying": "In verification at the desk"
+      "verifying": "Waiting for a citizen-recorded update"
     },
     "blocked": {
       "title": "Blocked actions",

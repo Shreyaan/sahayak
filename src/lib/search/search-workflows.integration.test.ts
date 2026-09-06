@@ -16,10 +16,10 @@ describe("searchWorkflows", () => {
 
     expect(response.shouldClarify).toBe(false);
     expect(response.results[0]?.workflowId).toBe("scholarship");
-    expect(response.results[0]?.workflowVersionId).toBe("scholarship-v1");
+    expect(response.results[0]?.workflowVersionId).toBe("scholarship-v4");
     expect(response.results[0]?.trust.sourceLinks.some((source) => source.url.startsWith("https://"))).toBe(true);
     expect(response.results[0]?.trust).toMatchObject({
-      provenance: "official-source-reviewed",
+      provenance: "legacy-verification-pending",
       currentExpertSupportCount: 0,
       hasUnresolvedDisagreement: false,
       sourceLinks: expect.any(Array),
@@ -45,7 +45,7 @@ describe("searchWorkflows", () => {
 
     expect(response.shouldClarify).toBe(false);
     expect(response.results[0]?.workflowId).toBe("bereavement");
-    expect(response.results[0]?.workflowVersionId).toBe("bereavement-v1");
+    expect(response.results[0]?.workflowVersionId).toBe("bereavement-v2");
   });
 
   test("does not invent a journey for an unsupported need", async () => {

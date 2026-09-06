@@ -39,6 +39,7 @@ function StepTranslation({ node, locale }: { node: WorkflowNode; locale: Locale 
         <div><dt className="font-bold text-[#718078]">{node.confirmLabel?.[locale] ?? "Confirm"}</dt><dd className="mt-1 text-[#263c32]">{node.onConfirm.reply[locale]}</dd></div>
         {node.onDecline && <div><dt className="font-bold text-[#718078]">{node.declineLabel?.[locale] ?? "Decline"}</dt><dd className="mt-1 text-[#263c32]">{node.onDecline.reply[locale]}</dd></div>}
         {node.verify && <div><dt className="font-bold text-[#718078]">Verification result</dt><dd className="mt-1 text-[#263c32]">{node.verify.outcome.reply[locale]}</dd></div>}
+        {node.report?.options.map((option) => <div key={option.id}><dt className="font-bold text-[#718078]">{option.label[locale]}</dt><dd className="mt-1 text-[#263c32]">{option.reply[locale]}</dd></div>)}
       </dl>
     </details>
   </section>;
@@ -80,7 +81,10 @@ export default async function PublishedWorkflowPage({ params }: { params: Promis
           <h1 className="mt-3 max-w-3xl text-[clamp(2.25rem,5vw,3.5rem)] font-black leading-[1.02] tracking-[-0.04em]">{workflow.definition.title.en}</h1>
           <p className="mt-3 text-lg text-[#425149]">{workflow.definition.title.hi}</p>
         </div>
-        <span className="rounded-full bg-[#eaf3ed] px-3 py-1 text-sm font-bold text-[#2d7255]">Live</span>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full bg-[#eaf3ed] px-3 py-1 text-sm font-bold text-[#2d7255]">Live</span>
+          {(workflow.workflowId === "scholarship" || workflow.workflowId === "bereavement") && <span className="rounded-full bg-[#fff1cf] px-3 py-1 text-sm font-bold text-[#79540d]">Synthetic example workflow</span>}
+        </div>
       </div>
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <div><p className="text-xs font-extrabold uppercase tracking-[.1em] text-[var(--green)]">English summary</p><p className="mt-2 text-lg leading-7 text-[#59675f]">{workflow.definition.subtitle.en}</p></div>
