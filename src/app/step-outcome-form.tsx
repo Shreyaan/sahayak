@@ -15,10 +15,11 @@ const copy = {
       skipped: "Skip",
     },
     detail: "What was different? (optional)",
-    placeholder: "Do not include Aadhaar numbers, phone numbers, or email addresses.",
+    placeholder:
+      "Do not include Aadhaar numbers, phone numbers, or email addresses.",
     save: "Save step feedback",
     saving: "Saving…",
-    saved: "Feedback saved with this case and workflow version.",
+    saved: "Feedback saved with this case",
     error: "Feedback could not be saved. Please try again.",
   },
   hi: {
@@ -33,12 +34,18 @@ const copy = {
     placeholder: "आधार नंबर, फ़ोन नंबर या ईमेल पता न लिखें।",
     save: "कदम की जानकारी सहेजें",
     saving: "सहेज रहे हैं…",
-    saved: "जानकारी इस केस और यात्रा संस्करण के साथ सहेजी गई।",
+    saved: "जानकारी सहेज ली गई है।",
     error: "जानकारी सहेजी नहीं जा सकी। फिर कोशिश करें।",
   },
 } as const;
 
-export function StepOutcomeForm({ caseId, stepId, stepTitle, locale, completed }: {
+export function StepOutcomeForm({
+  caseId,
+  stepId,
+  stepTitle,
+  locale,
+  completed,
+}: {
   caseId: string;
   stepId: string;
   stepTitle?: string;
@@ -66,11 +73,14 @@ export function StepOutcomeForm({ caseId, stepId, stepTitle, locale, completed }
           ? { detail: detail.trim() }
           : {}),
       };
-      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/outcomes`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const response = await fetch(
+        `/api/cases/${encodeURIComponent(caseId)}/outcomes`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
       if (!response.ok) throw new Error("OUTCOME_FAILED");
       setMessage(text.saved);
     } catch {
@@ -81,21 +91,28 @@ export function StepOutcomeForm({ caseId, stepId, stepTitle, locale, completed }
   }
 
   return (
-    <form className="grid gap-2.5 mt-4 p-4 rounded-2xl border border-[var(--line)] bg-white/[0.72]" onSubmit={submit}>
+    <form
+      className="grid gap-2.5 mt-4 p-4 rounded-2xl border border-[var(--line)] bg-white/[0.72]"
+      onSubmit={submit}
+    >
       <strong>{text.heading}</strong>
-      {stepTitle && <small className="-mt-1 block text-[#65716b]">{stepTitle}</small>}
+      {stepTitle && (
+        <small className="-mt-1 block text-[#65716b]">{stepTitle}</small>
+      )}
       <div className="grid grid-cols-2 gap-2">
-        {(Object.keys(text.choices) as StepChoice[]).filter(kind => completed || kind !== "worked").map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            aria-pressed={choice === kind}
-            onClick={() => setChoice(kind)}
-            className="min-h-11 p-[9px] rounded-xl border border-[var(--line)] bg-white text-[var(--green)] font-bold aria-pressed:border-[var(--green)] aria-pressed:bg-[#e8f4ee]"
-          >
-            {text.choices[kind]}
-          </button>
-        ))}
+        {(Object.keys(text.choices) as StepChoice[])
+          .filter((kind) => completed || kind !== "worked")
+          .map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={choice === kind}
+              onClick={() => setChoice(kind)}
+              className="min-h-11 p-[9px] rounded-xl border border-[var(--line)] bg-white text-[var(--green)] font-bold aria-pressed:border-[var(--green)] aria-pressed:bg-[#e8f4ee]"
+            >
+              {text.choices[kind]}
+            </button>
+          ))}
       </div>
       {(choice === "different" || choice === "stuck") && (
         <label className="grid gap-1.5 text-[.82rem] font-extrabold">
@@ -110,11 +127,23 @@ export function StepOutcomeForm({ caseId, stepId, stepTitle, locale, completed }
           />
         </label>
       )}
-      <button className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55" type="submit" disabled={!choice || pending}>
+      <button
+        className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55"
+        type="submit"
+        disabled={!choice || pending}
+      >
         {pending ? text.saving : text.save}
       </button>
-      {message ? <p className="m-0 text-[var(--green)] font-extrabold" role="status">{message}</p> : null}
-      {error ? <p className="discovery-error" role="alert">{error}</p> : null}
+      {message ? (
+        <p className="m-0 text-[var(--green)] font-extrabold" role="status">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="discovery-error" role="alert">
+          {error}
+        </p>
+      ) : null}
     </form>
   );
 }
@@ -140,7 +169,13 @@ const resolutionCopy = {
   },
 } as const;
 
-export function ResolutionOutcomeForm({ caseId, locale }: { caseId: string; locale: Locale }) {
+export function ResolutionOutcomeForm({
+  caseId,
+  locale,
+}: {
+  caseId: string;
+  locale: Locale;
+}) {
   const text = resolutionCopy[locale];
   const [detail, setDetail] = useState("");
   const [pending, setPending] = useState(false);
@@ -153,11 +188,17 @@ export function ResolutionOutcomeForm({ caseId, locale }: { caseId: string; loca
     setMessage(undefined);
     setError(undefined);
     try {
-      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/outcomes`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "resolved", ...(detail.trim() ? { detail: detail.trim() } : {}) }),
-      });
+      const response = await fetch(
+        `/api/cases/${encodeURIComponent(caseId)}/outcomes`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            kind: "resolved",
+            ...(detail.trim() ? { detail: detail.trim() } : {}),
+          }),
+        }
+      );
       if (!response.ok) throw new Error("RESOLUTION_FAILED");
       setMessage(text.saved);
     } catch {
@@ -168,7 +209,10 @@ export function ResolutionOutcomeForm({ caseId, locale }: { caseId: string; loca
   }
 
   return (
-    <form className="grid gap-2.5 mt-4 p-4 rounded-2xl border border-[var(--line)] bg-white/[0.72] border-l-4 border-l-[var(--green)]" onSubmit={submit}>
+    <form
+      className="grid gap-2.5 mt-4 p-4 rounded-2xl border border-[var(--line)] bg-white/[0.72] border-l-4 border-l-[var(--green)]"
+      onSubmit={submit}
+    >
       <strong>{text.heading}</strong>
       <label className="grid gap-1.5 text-[.82rem] font-extrabold">
         {text.detail}
@@ -181,11 +225,23 @@ export function ResolutionOutcomeForm({ caseId, locale }: { caseId: string; loca
           className="w-full p-2.5 rounded-xl border border-[var(--line)] resize-y [font:inherit]"
         />
       </label>
-      <button className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55" type="submit" disabled={pending}>
+      <button
+        className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55"
+        type="submit"
+        disabled={pending}
+      >
         {pending ? text.pending : text.submit}
       </button>
-      {message ? <p className="m-0 text-[var(--green)] font-extrabold" role="status">{message}</p> : null}
-      {error ? <p className="discovery-error" role="alert">{error}</p> : null}
+      {message ? (
+        <p className="m-0 text-[var(--green)] font-extrabold" role="status">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="discovery-error" role="alert">
+          {error}
+        </p>
+      ) : null}
     </form>
   );
 }

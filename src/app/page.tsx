@@ -93,6 +93,7 @@ export function HomeContent() {
   const [feedback, setFeedback] = useState("");
   const [responseEntryStepId, setResponseEntryStepId] = useState<string>();
   const [briefPending, setBriefPending] = useState(false);
+  const [canShare, setCanShare] = useState(false);
   const [reportStepId, setReportStepId] = useState<string>();
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
@@ -355,11 +356,12 @@ export function HomeContent() {
   }
 
   /**
-   * A file in the Downloads folder is not where a citizen keeps things. On a
-   * phone the share sheet reaches WhatsApp, notes and print, so offer that
-   * first and fall back to the file only where sharing is unavailable.
+   * A file in the Downloads folder is not where a citizen keeps things, so the
+   * share sheet — which reaches WhatsApp, notes and print — is the main offer
+   * wherever the browser supports it. The file stays available beside it
+   * rather than being chosen for the citizen by guessing at their device.
    */
-  async function keepNextStep() {
+  async function keepNextStep(mode: "share" | "download") {
     if (!caseId || briefPending) return;
     setBriefPending(true);
     try {
@@ -367,10 +369,7 @@ export function HomeContent() {
       if (!response.ok) throw new Error("BRIEF_UNAVAILABLE");
       const text = await response.text();
 
-      // A touch device is a phone the citizen carries to the desk; a mouse is a
-      // desktop where a file is the more useful artefact.
-      const onAPhone = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
-      if (onAPhone && typeof navigator !== "undefined" && navigator.share) {
+      if (mode === "share" && typeof navigator !== "undefined" && navigator.share) {
         try {
           await navigator.share({ title: locale === "hi" ? "सहायक — अगला कदम" : "Sahayak — your next step", text });
           return;
@@ -396,6 +395,7 @@ export function HomeContent() {
   const workflow = caseSnapshot && getCaseWorkflowDefinition(caseSnapshot);
   const openNode = caseSnapshot?.nodes.find((node) => node.state === "needs-you");
   const current = workflow && openNode ? workflow.nodes.find((node) => node.id === openNode.id) : undefined;
+  useEffect(() => { setCanShare(typeof navigator !== "undefined" && typeof navigator.share === "function"); }, []);
   useEffect(() => {
     if (!current) return;
     actionHeading.current?.focus({ preventScroll: true });
@@ -498,7 +498,8 @@ export function HomeContent() {
                     </p>
                   )}
                   <div className="my-4 flex flex-wrap items-center gap-3 text-sm">
-                    <button type="button" className="min-h-11 rounded-xl border border-[var(--green)] px-4 py-2 font-bold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep()}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "यह कदम अपने पास रखें" : "Keep this step with you")}</button>
+                    <button type="button" className="min-h-11 rounded-xl border border-[var(--green)] px-4 py-2 font-bold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep(canShare ? "share" : "download")}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "यह कदम अपने पास रखें" : "Keep this step with you")}</button>
+                    {canShare && <button type="button" className="font-bold text-[var(--green)] underline disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("download")}>{locale === "hi" ? "फ़ाइल डाउनलोड करें" : "Download the file"}</button>}
                     {caseId && <a className="font-bold text-[var(--green)] underline" href={caseCardHref(caseId)}>{locale === "hi" ? "मेरी तैयारी और रिकॉर्ड" : "My preparation and record"}</a>}
                   </div>
                   <VisitCard node={current} locale={locale} />
