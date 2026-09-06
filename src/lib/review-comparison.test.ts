@@ -13,9 +13,8 @@ describe("review comparison", () => {
     proposed.nodes = proposed.nodes.filter((node) => node.id !== "bank-seeding");
 
     expect(compareWorkflowDefinitions(proposed, baseline).map((row) => [row.proposedNodeId, row.status])).toEqual([
-      ["nsp-status", "changed"],
-      ["review-only-wording-node", "changed"],
-      ["pfms-trace", "same"],
+      ["pfms-trace", "changed"],
+      ["review-only-wording-node", "same"],
       ["verify-again", "same"],
       ["grievance", "same"],
       ["credit", "same"],
@@ -77,6 +76,6 @@ describe("review comparison", () => {
     };
 
     const [first] = compareWorkflowDefinitions(proposed, definition());
-    expect(first).toMatchObject({ proposedNodeId: "renamed-first-step", baselineNodeId: "nsp-status", status: "changed" });
+    expect(first).toMatchObject({ proposedNodeId: "renamed-first-step", baselineNodeId: "pfms-trace", status: "changed" });
   });
 });

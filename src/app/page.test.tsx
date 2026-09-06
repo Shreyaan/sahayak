@@ -99,7 +99,7 @@ describe("citizen case continuity", () => {
     renderHome({ searchParams: `?caseId=${caseId}` });
 
     expect(
-      await screen.findByRole("heading", { name: "Understand the NSP status" })
+      await screen.findByRole("heading", { name: "Check where your scholarship payment is stuck" })
     ).not.toBeNull();
   });
 
@@ -166,7 +166,7 @@ describe("citizen case continuity", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "Understand the NSP status" })
+      await screen.findByRole("heading", { name: "Check where your scholarship payment is stuck" })
     ).not.toBeNull();
     expect(detailAttempts).toBe(2);
   });
@@ -199,12 +199,20 @@ describe("citizen action priority", () => {
     renderHome({ searchParams: `?caseId=${caseId}` });
 
     const actionHeading = await screen.findByRole("heading", {
-      name: "Understand the NSP status",
+      name: "Check where your scholarship payment is stuck",
     });
     const actionPanel = actionHeading.closest("section");
     // The journey history is the page's only ordered list; matched by structure so
     // the assertion survives styling changes.
     const timeline = document.querySelector("ol");
+
+    expect(timeline?.closest("details")?.open).toBe(false);
+    const reply = screen.queryByRole("textbox", { name: "Ask Sahayak a question" });
+    expect(reply !== null).toBe(true);
+    if (reply) {
+      expect(actionPanel?.contains(reply)).toBe(true);
+      expect(reply.closest("form")?.classList.contains("sticky")).toBe(false);
+    }
 
     expect(actionPanel).not.toBeNull();
     expect(timeline).not.toBeNull();
@@ -262,7 +270,7 @@ test("a citizen without a desk response sees preparation before being asked to f
     screen.queryByRole("textbox", { name: "What did they tell you?" }) === null
   ).toBe(true);
   expect(
-    screen.getByRole("button", { name: "Keep this step with you" }) !== null
+    screen.getByText("Save or share this step") !== null
   ).toBe(true);
   fireEvent.click(record);
   expect(
@@ -297,7 +305,7 @@ test("opening a saved case places keyboard focus on its current action", async (
   mockCaseApi();
   renderHome({ searchParams: `?caseId=${caseId}` });
   const heading = await screen.findByRole("heading", {
-    name: "Understand the NSP status",
+    name: "Check where your scholarship payment is stuck",
   });
   await waitFor(() => expect(document.activeElement === heading).toBe(true));
 });
@@ -305,7 +313,7 @@ test("opening a saved case places keyboard focus on its current action", async (
 test("contributor mode keeps the wide layout even while a case is open", async () => {
   mockCaseApi();
   const { container } = renderHome({ searchParams: `?caseId=${caseId}` });
-  await screen.findByRole("heading", { name: "Understand the NSP status" });
+  await screen.findByRole("heading", { name: "Check where your scholarship payment is stuck" });
 
   // The narrow 520px column belongs to the citizen conversation only; the
   // contributor form and its MCP sidebar need the full width.
@@ -326,7 +334,7 @@ test("the brand returns to the catalogue from an open case and clears its id fro
     searchParams: `?caseId=${caseId}`,
     onUrlUpdate: (event) => updates.push(event),
   });
-  await screen.findByRole("heading", { name: "Understand the NSP status" });
+  await screen.findByRole("heading", { name: "Check where your scholarship payment is stuck" });
 
   fireEvent.click(screen.getByRole("button", { name: /^Sahayak/ }));
 

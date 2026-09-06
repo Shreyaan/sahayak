@@ -55,7 +55,7 @@ function VisitCard({
   if (!node.visit) return null;
 
   return (
-    <div className="mt-3 rounded-2xl border border-[var(--line)] bg-white p-3.5 text-[var(--ink)]">
+    <div className="mt-5 border-t border-[var(--line)] pt-5 text-[var(--ink)]">
       <p className="m-0 mt-1.5 text-[.72rem] font-extrabold uppercase tracking-[.12em] leading-[1.5] text-[var(--green)]">
         {text("visit.eyebrow")}
       </p>
@@ -129,6 +129,8 @@ export function HomeContent() {
   const [canShare, setCanShare] = useState(false);
   const [reportStepId, setReportStepId] = useState<string>();
   const [answer, setAnswer] = useState("");
+  const [chatTurns, setChatTurns] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [chatError, setChatError] = useState("");
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [resumeAttempt, setResumeAttempt] = useState(0);
@@ -244,6 +246,10 @@ export function HomeContent() {
         throw new Error(result.error || "Request failed");
       }
 
+      if (body.action === "help") {
+        setChatTurns(turns => [...turns, { role: "user", content: String(body.message) }, { role: "assistant", content: result.reply }].slice(-8) as typeof turns);
+        return true;
+      }
       setCaseSnapshot(result.caseSnapshot);
       setFeedback(
         transitionFeedback(result.reply, actedStepId, result.caseSnapshot)
@@ -257,7 +263,8 @@ export function HomeContent() {
         setReportStepId(actedStepId);
       return true;
     } catch {
-      setFeedback(text("error.request"));
+      if (body.action === "help") setChatError(locale === "hi" ? "जवाब नहीं मिल पाया। आपकी बात यहीं है; फिर कोशिश करें।" : "Could not get an answer. Your question is still here; try again.");
+      else setFeedback(text("error.request"));
       return false;
     } finally {
       setBusy(false);
@@ -273,13 +280,16 @@ export function HomeContent() {
     const value = answer.trim();
     if (!value) return;
 
-    void ask({ action: "reply", message: value }).then((saved) => {
+    setChatError("");
+    void ask({ action: "help", message: value, conversation: chatTurns }).then((saved) => {
       if (saved) setAnswer("");
     });
   }
 
   /** Opens a case, whether it came from the server or locally. */
   function openCase(caseSnapshot: CaseSnapshot, id: string | null) {
+    setChatTurns([]);
+    setChatError("");
     setCaseId(id);
     setCaseSnapshot(caseSnapshot);
     setAnswer("");
@@ -557,7 +567,7 @@ export function HomeContent() {
 
   return (
     <main
-      className={`mx-auto min-h-screen w-full px-[18px] pt-[18px] pb-[92px] min-[760px]:pt-[30px] ${contributorMode || !caseSnapshot ? "max-w-[1180px]" : "max-w-[520px]"}`}
+      className={`mx-auto min-h-screen w-full px-[18px] pt-[18px] pb-[92px] min-[760px]:pt-[30px] ${contributorMode || !caseSnapshot ? "max-w-[1180px]" : "max-w-[680px]"}`}
     >
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <button
@@ -594,7 +604,7 @@ export function HomeContent() {
         />
       ) : (
         <>
-          <section className="rounded-[22px] border border-[var(--line)] bg-[rgba(255,255,255,.55)] p-5 shadow-[0_14px_40px_rgba(52,43,27,.07)]">
+          <section className="mt-7">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">
@@ -612,97 +622,61 @@ export function HomeContent() {
             {/* {isSyntheticSeed(caseSnapshot.workflowId) && <p className="mt-4 w-fit rounded-full bg-[#fff1cf] px-3 py-1 text-xs font-extrabold text-[#79540d]">{locale === "hi" ? "कृत्रिम उदाहरण यात्रा और रिकॉर्ड" : "Synthetic example journey and records"}</p>} */}
 
             <section
-              className="mt-4 rounded-[18px] border-2 border-[var(--green)] bg-white p-4 shadow-[0_10px_30px_rgba(28,35,31,.08)]"
+              className="mt-5 rounded-2xl border border-[var(--line)] bg-white p-6 max-sm:p-4"
               aria-live="polite"
             >
               {current ? (
                 <>
                   <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">
-                    {text("action.eyebrow")}
+                    {locale === "hi" ? "अगला कदम" : "Next step"}
                   </p>
                   <h2
                     ref={actionHeading}
                     tabIndex={-1}
-                    className="mx-0 mt-1 mb-1.5 text-[1.15rem] scroll-mt-5 outline-none"
+                    className="mx-0 mt-2 mb-3 text-2xl font-bold leading-tight tracking-tight scroll-mt-5 outline-none"
                   >
                     {actionTitle}
                   </h2>
                   {showDetail && (
-                    <p className="m-0 mb-2.5 text-[.92rem] text-[#5a6560]">
+                    <p className="m-0 mb-4 text-base leading-relaxed text-[#5a6560]">
                       {actionDetail}
                     </p>
                   )}
-                  <p className="m-0 mb-3.5 text-[1.05rem] font-extrabold">
-                    {actionAsk}
-                  </p>
+                  {!current.report && <p className="m-0 mb-4 text-base font-semibold leading-relaxed">{actionAsk}</p>}
                   {current.link && (
                     <p className="m-0 mb-3.5 grid gap-1">
                       <a
-                        className="justify-self-start rounded-full border border-[var(--green)] px-4 py-2.5 font-extrabold text-[var(--green)] no-underline"
+                        className="justify-self-start rounded-xl bg-[var(--green)] px-4 py-3 font-bold text-white no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--green)]"
                         href={current.link.url}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        🔗 {translate(current.link.action, locale)}
+                        {translate(current.link.action, locale)} ↗
                       </a>
                       <small className="text-[.78rem] text-[#67736d]">
                         {translate(current.link.collect, locale)}
                       </small>
                     </p>
                   )}
-                  <div className="my-4 flex flex-wrap items-center gap-3 text-sm">
-                    <button
-                      type="button"
-                      className="min-h-11 rounded-xl border border-[var(--green)] px-4 py-2 font-bold text-[var(--green)] disabled:opacity-50"
-                      disabled={briefPending}
-                      onClick={() =>
-                        void keepNextStep(canShare ? "share" : "download")
-                      }
-                    >
-                      {briefPending
-                        ? locale === "hi"
-                          ? "तैयार हो रहा है…"
-                          : "Preparing…"
-                        : locale === "hi"
-                          ? "यह कदम अपने पास रखें"
-                          : "Keep this step with you"}
-                    </button>
-                    {canShare && (
-                      <button
-                        type="button"
-                        className="font-bold text-[var(--green)] underline disabled:opacity-50"
-                        disabled={briefPending}
-                        onClick={() => void keepNextStep("download")}
-                      >
-                        {locale === "hi"
-                          ? "फ़ाइल डाउनलोड करें"
-                          : "Download the file"}
-                      </button>
-                    )}
-                    {caseId && (
-                      <a
-                        className="font-bold text-[var(--green)] underline"
-                        href={caseCardHref(caseId)}
-                      >
-                        {locale === "hi"
-                          ? "मेरी तैयारी और रिकॉर्ड"
-                          : "My preparation and record"}
-                      </a>
-                    )}
-                  </div>
-                  <VisitCard node={current} locale={locale} />
+                  {current.link && current.visit ? (
+                    <details className="mt-5 rounded-xl bg-[#f4f2eb] px-4">
+                      <summary className="cursor-pointer py-4 text-sm font-semibold text-[var(--green)]">{translate(current.visit.office, locale)}</summary>
+                      <div className="pb-4"><VisitCard node={current} locale={locale} /></div>
+                    </details>
+                  ) : <VisitCard node={current} locale={locale} />}
                   {current.report && artifactPanel}
                   {current.report ? (
                     responseEntryStepId !== current.id ? (
-                      <div className="mt-5 rounded-xl border border-[var(--line)] bg-[#f6f3eb] p-4">
+                      <div className="mt-6 border-t border-[var(--line)] pt-5">
+                        <h3 className="mb-2 text-base font-bold">{locale === "hi" ? "जवाब मिलने पर यहाँ लौटें" : "Come back when you have an answer"}</h3>
                         <p className="m-0 text-sm leading-relaxed">
                           {locale === "hi"
-                            ? "अभी जवाब नहीं मिला? पहले ऊपर की तैयारी का उपयोग करें। इसी ब्राउज़र में लौटकर यह कदम जारी रख सकते हैं।"
-                            : "No response yet? Use the preparation above first. You can return to this step in the same browser."}
+                            ? "सही संदेश, तारीख और मिला संदर्भ नंबर रखें। केस सुरक्षित है—आगे बढ़ने के लिए इसी ब्राउज़र में लौटें।"
+                            : "Keep the exact message, date and any reference number. This case is saved—return in this browser to continue."}
                         </p>
                         <button
                           type="button"
-                          className="mt-3 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55"
+                          className="mt-3 rounded-xl border-0 border border-[var(--green)] bg-white px-3.5 py-2.5 font-bold text-[var(--green)] disabled:cursor-not-allowed disabled:opacity-55"
                           onClick={() => setResponseEntryStepId(current.id)}
                         >
                           {locale === "hi"
@@ -752,6 +726,59 @@ export function HomeContent() {
                       </button>
                     </div>
                   )}
+          {current && (
+            <section className="mt-6 border-t border-[var(--line)] pt-5" aria-label={locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}>
+              <h3 className="text-lg font-bold">{locale === "hi" ? "समझ नहीं आया? सहायक से पूछें" : "Not sure what to do? Ask Sahayak"}</h3>
+              <p className="mt-1 text-sm text-[#65716b]">{locale === "hi" ? "अपनी भाषा में लिखें या बोलें। पूछने से आपका केस आगे नहीं बढ़ेगा।" : "Type or speak in your own words. Asking does not advance your case."}</p>
+              <div className="mt-3 grid gap-3" role="log" aria-live="polite">
+                {chatTurns.map((turn, index) => <div key={index} className={turn.role === "assistant" ? "rounded-xl bg-[#edf4ee] p-3 text-sm leading-relaxed whitespace-pre-wrap" : "ml-6 text-sm text-[#536059] whitespace-pre-wrap"}>
+                  <strong className="mb-1 block">{turn.role === "assistant" ? (locale === "hi" ? "सहायक" : "Sahayak") : (locale === "hi" ? "आप" : "You")}</strong>{turn.content}
+                  {turn.role === "assistant" && <button type="button" className="mt-2 block min-h-11 font-semibold text-[var(--green)]" onClick={() => void speak(turn.content)}>{locale === "hi" ? "जवाब सुनें" : "Listen to answer"}</button>}
+                </div>)}
+                {chatError && <p role="alert" className="text-sm text-[#8b2e24]">{chatError}</p>}
+              </div>
+            <form
+              className="mt-5 flex items-end gap-2 border-t border-[var(--line)] pt-4"
+              onSubmit={send}
+            >
+              <button
+                className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
+                type="button"
+                onClick={toggleRecording}
+                aria-label={
+                  recording ? text("chat.recordStop") : text("chat.recordStart")
+                }
+              >
+                {recording ? "■" : "●"}
+              </button>
+              <textarea
+                className="w-full min-w-0 resize-none border-0 bg-transparent p-2.5 outline-0 [font:inherit]"
+                aria-label={locale === "hi" ? "सहायक से अपना सवाल पूछें" : "Ask Sahayak a question"}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                placeholder={locale === "hi" ? "जैसे: PFMS क्या है? आवेदन नंबर कहाँ मिलेगा?" : "For example: What is PFMS? Where do I find my application number?"}
+                rows={2}
+                maxLength={2_000}
+              />
+              <button
+                className="shrink-0 min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55"
+                disabled={busy || !answer.trim()}
+                type="submit"
+              >
+                {busy ? (locale === "hi" ? "पूछ रहे हैं…" : "Asking…") : (locale === "hi" ? "पूछें" : "Ask")}
+              </button>
+            </form>
+              <p className="mt-2 text-xs text-[#65716b]">{locale === "hi" ? "AI से समझने में मदद लें। यह बातचीत रीलोड पर मिट जाती है; ज़रूरी जवाब केस में दर्ज करें।" : "AI helps explain. This chat clears on reload; record important responses in your case."}</p>
+            </section>
+          )}
+                  <details className="mt-4 border-t border-[var(--line)] pt-2 text-sm">
+                    <summary className="min-h-11 cursor-pointer py-3 font-medium text-[#65716b]">{locale === "hi" ? "यह कदम सहेजें या साझा करें" : "Save or share this step"}</summary>
+                    <p className="mb-2 text-sm text-[#65716b]">{locale === "hi" ? "अपने पास रखने के लिए इस कदम की तैयारी की कॉपी लें।" : "Take a copy of these instructions to use away from Sahayak."}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {canShare && <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("share")}>{locale === "hi" ? "साझा करें" : "Share instructions"}</button>}
+                      <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("download")}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "फ़ाइल डाउनलोड करें" : "Download instructions")}</button>
+                    </div>
+                  </details>
                   {!current.report && artifactPanel}
                 </>
               ) : waiting ? (
@@ -788,7 +815,15 @@ export function HomeContent() {
                 </p>
               )}
 
+
+              {caseId && resolved && (
+                <ResolutionOutcomeForm caseId={caseId} locale={locale} />
+              )}
+            </section>
+
               {caseId && reportStepId && (
+                <details className="mt-5 border-t border-[var(--line)] pt-4">
+                  <summary className="min-h-11 cursor-pointer text-sm font-semibold text-[#536059]">{locale === "hi" ? "पिछले कदम पर जानकारी दें" : "Feedback on the previous step"}</summary>
                 <StepOutcomeForm
                   key={`${reportStepId}-${caseSnapshot.nodes.find((node) => node.id === reportStepId)?.state}`}
                   completed={
@@ -800,16 +835,11 @@ export function HomeContent() {
                   stepTitle={reportStepTitle}
                   locale={locale}
                 />
+                </details>
               )}
 
-              {caseId && resolved && (
-                <ResolutionOutcomeForm caseId={caseId} locale={locale} />
-              )}
-            </section>
-
-            <p className="m-0 mt-6 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">
-              {text("case.history")}
-            </p>
+            <details className="mt-6 border-t border-[var(--line)] pt-4">
+            <summary className="min-h-11 cursor-pointer font-semibold text-[var(--green)]">{text("case.history")}</summary>
             <ol className="m-[22px_0px_0px] list-none p-0">
               {caseSnapshot.nodes.map((node) => {
                 const definition = workflow.nodes.find(
@@ -863,10 +893,11 @@ export function HomeContent() {
                 );
               })}
             </ol>
+            </details>
 
             {caseId && (
               <a
-                className="mt-4 block min-h-11 rounded-[10px] bg-[var(--marigold)] p-3 text-center font-semibold text-[#2f250f] no-underline"
+                className="mt-4 inline-flex min-h-11 items-center font-semibold text-[var(--green)] underline underline-offset-4"
                 href={caseCardHref(caseId)}
               >
                 {text("case.openCaseCard")}
@@ -874,7 +905,7 @@ export function HomeContent() {
             )}
 
             <button
-              className="mt-4.5 w-full min-h-11 rounded-xl border border-[var(--line)] bg-[#eee5d8] font-extrabold text-[var(--green)]"
+              className="mt-3 block min-h-11 text-sm font-medium text-[#65716b] underline underline-offset-4"
               type="button"
               onClick={resetDemo}
             >
@@ -882,39 +913,7 @@ export function HomeContent() {
             </button>
           </section>
 
-          {!current?.report && (
-            <form
-              className="sticky bottom-3 flex items-end gap-2 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,.96)] p-2 shadow-[0_12px_35px_rgba(28,35,31,.14)]"
-              onSubmit={send}
-            >
-              <button
-                className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
-                type="button"
-                onClick={toggleRecording}
-                aria-label={
-                  recording ? text("chat.recordStop") : text("chat.recordStart")
-                }
-              >
-                {recording ? "■" : "●"}
-              </button>
-              <textarea
-                className="w-full min-w-0 resize-none border-0 bg-transparent p-2.5 outline-0 [font:inherit]"
-                aria-label={text("answer.label")}
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                placeholder={text("answer.placeholder")}
-                rows={2}
-                maxLength={2_000}
-              />
-              <button
-                className="min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55"
-                disabled={busy || !answer.trim()}
-                type="submit"
-              >
-                {text("answer.send")}
-              </button>
-            </form>
-          )}
+
         </>
       )}
     </main>

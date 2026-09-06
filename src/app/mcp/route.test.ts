@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { seedPublishedWorkflows } from "@/db/seed";
+beforeAll(seedPublishedWorkflows);
+import { beforeAll, describe, expect, test } from "bun:test";
 import { POST } from "./route";
 
 let nextId = 0;
@@ -38,7 +40,7 @@ describe("POST /mcp", () => {
       arguments: { query: "scholarship released but payment missing", locale: "en" },
     })));
     const structured = (result.result as { structuredContent: { results: Array<{ workflowVersionId: string }> } }).structuredContent;
-    expect(structured.results[0]?.workflowVersionId).toBe("scholarship-v5");
+    expect(structured.results[0]?.workflowVersionId).toBe("scholarship-v6");
   });
 
   test("get_workflow rejects an unknown or unpublished version", async () => {

@@ -43,7 +43,7 @@ describe("GET /api/cases/:id", () => {
 test('the owner can take the current action away before any desk response exists', async () => {
   const started = await startCase(new Request('http://localhost/api/cases', {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': crypto.randomUUID() },
-    body: JSON.stringify({ workflowVersionId: 'scholarship-v5' }),
+    body: JSON.stringify({ workflowVersionId: 'scholarship-v6' }),
   }));
   const { caseId } = await started.json();
   const cookie = started.headers.get('set-cookie')!.split(';', 1)[0]!;
@@ -55,8 +55,8 @@ test('the owner can take the current action away before any desk response exists
   expect(response.headers.get('content-disposition')).toContain('attachment;');
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   const brief = await response.text();
-  expect(brief).toContain('NSP स्थिति समझें');
-  expect(brief).toContain('scholarship-v5');
+  expect(brief).toContain('छात्रवृत्ति का भुगतान कहाँ अटका है, जाँचें');
+  expect(brief).toContain('scholarship-v6');
   expect(brief).not.toContain('undefined');
   const other = new Request(url);
   other.headers.set('cookie', `sahayak-browser=${crypto.randomUUID()}`);

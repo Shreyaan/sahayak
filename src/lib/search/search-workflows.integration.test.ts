@@ -37,7 +37,7 @@ describe("searchWorkflows", () => {
 
     expect(response.shouldClarify).toBe(false);
     expect(response.results[0]?.workflowId).toBe("scholarship");
-    expect(response.results[0]?.workflowVersionId).toBe("scholarship-v5");
+    expect(response.results[0]?.workflowVersionId).toBe("scholarship-v6");
     expect(response.results[0]?.trust.sourceLinks.some((source) => source.url.startsWith("https://"))).toBe(true);
     expect(response.results[0]?.trust).toMatchObject({
       provenance: "legacy-verification-pending",

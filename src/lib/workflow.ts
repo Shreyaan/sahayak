@@ -599,37 +599,12 @@ const scholarship: WorkflowDefinition = {
     hi: "NSP छात्रवृत्ति भुगतान खाते में नहीं पहुँचा",
     en: "An NSP payment that never arrived",
   },
-  firstNodeId: "nsp-status",
+  firstNodeId: "pfms-trace",
   nodes: [
-    {
-      id: "nsp-status",
-      type: "document-explain",
-      title: { hi: "NSP स्थिति समझें", en: "Understand the NSP status" },
-      detail: {
-        hi: "PFMS (Public Financial Management System) सरकारी भुगतान की स्थिति दिखाने वाली प्रणाली है। NSP पर 'Released to PFMS' का मतलब खाते में राशि जमा होना नहीं है। पहले भुगतान का वास्तविक संदेश खोजें; जवाब न हो तो भी आप अगला कदम शुरू कर सकते हैं।",
-        en: "PFMS (Public Financial Management System) shows government payment information. 'Released to PFMS' on NSP does not prove a bank credit. First find the actual payment message; you do not need an existing desk response to begin.",
-      },
-      ask: {
-        hi: "भुगतान की स्थिति कहाँ और कैसे जाँचनी है, देखें?",
-        en: "See where and how to check your payment?",
-      },
-      confirmLabel: {
-        hi: "भुगतान जाँचने का तरीका दिखाएँ",
-        en: "Show me how to check",
-      },
-      onConfirm: {
-        state: "done",
-        opens: "pfms-trace",
-        reply: {
-          hi: "नीचे भुगतान जाँचने की तैयारी है। जवाब मिलने के बाद यहाँ लौटें।",
-          en: "Your payment-check preparation is below. Return here after checking.",
-        },
-      },
-    },
     {
       id: "pfms-trace",
       type: "desk-verification",
-      title: { hi: "PFMS भुगतान जाँच", en: "PFMS payment check" },
+      title: { hi: "छात्रवृत्ति का भुगतान कहाँ अटका है, जाँचें", en: "Check where your scholarship payment is stuck" },
       detail: {
         hi: "नीचे PFMS भुगतान ट्रैकर खोलें। NSP श्रेणी चुनें, आवेदन ID और स्क्रीन पर माँगा गया सत्यापन भरें। पेज न खुले, रिकॉर्ड न मिले या संदेश समझ न आए तो नीचे दी गई डेस्क सहायता लें। अभी जवाब न हो तो फ़ॉर्म न भरें—आपका स्थान सुरक्षित है। सहायक ने कोई सरकारी जाँच शुरू नहीं की है।",
         en: "Open the PFMS payment tracker below. Choose NSP, enter your application ID and complete the verification shown there. If the page is unavailable, no record appears, or the result is unclear, use the desk preparation below. If you have no response yet, leave the form empty—your place is saved. Sahayak has not started a government check.",

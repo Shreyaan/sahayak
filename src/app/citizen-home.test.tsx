@@ -12,7 +12,7 @@ afterEach(cleanup);
 test('location changes filter the library but preserve saved cases in collapsed sections', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
   client.setQueryData(['published-workflows'], [
-    { id: 'scholarship', workflowVersionId: 'scholarship-v5', definition: workflows.scholarship, jurisdiction: { scope: 'central' } },
+    { id: 'scholarship', workflowVersionId: 'scholarship-v6', definition: workflows.scholarship, jurisdiction: { scope: 'central' } },
     { id: 'punjab-income', workflowVersionId: 'punjab-income-v1', definition: workflows['punjab-income'], jurisdiction: { scope: 'state', stateCode: 'PB' } },
   ]);
   render(<NextIntlClientProvider locale="en" messages={{ citizen }}>

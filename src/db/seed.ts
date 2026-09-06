@@ -23,8 +23,8 @@ const seeds = [
   },
   {
     workflowId: "scholarship" as const,
-    workflowVersionId: "scholarship-v5",
-    version: 5,
+    workflowVersionId: "scholarship-v6",
+    version: 6,
     trust: {
       provenance: "legacy-verification-pending",
       reviewDate: null,

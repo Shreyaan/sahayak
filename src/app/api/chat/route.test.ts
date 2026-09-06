@@ -29,6 +29,32 @@ function ownedChatRequest(body: unknown, token: string) {
 const bereavement = startCase("bereavement");
 
 describe("POST /api/chat", () => {
+  test("contextual help receives the workflow, prior conversation and redacted question without advancing", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    let captured: Record<string, unknown> = {};
+    mock.module("@openrouter/ai-sdk-provider", () => ({ createOpenRouter: () => () => ({ modelId: "test" }) }));
+    mock.module("ai", () => ({ generateText: async (input: Record<string, unknown>) => { captured = input; return { text: "PFMS shows payment information. Use the official tracker above." }; } }));
+    const snapshot = startCase("scholarship");
+    const result = await POST(chatRequest({ action: "help", message: "yes, explain PFMS for citizen@example.com", locale: "en", caseSnapshot: snapshot, conversation: [{ role: "user", content: "Where do I check?" }] }));
+    const body = await result.json();
+    expect(body.aiGenerated).toBe(true);
+    expect(body.caseSnapshot).toEqual(snapshot);
+    expect(String(captured.prompt)).toContain("pfms-trace");
+    expect(String(captured.prompt)).toContain("Where do I check?");
+    expect(String(captured.prompt)).not.toContain("citizen@example.com");
+    expect(String(captured.instructions)).toContain("do not change case progress");
+    expect(captured.timeout).toBe(15_000);
+  });
+  test("help questions never turn yes into a case transition when AI is unavailable", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    const snapshot = startCase("scholarship");
+    const result = await POST(chatRequest({ action: "help", message: "yes, but what is PFMS?", locale: "en", caseSnapshot: snapshot }));
+    const body = await result.json();
+    expect(result.status).toBe(200);
+    expect(body.caseSnapshot).toEqual(snapshot);
+    expect(body.aiGenerated).toBe(false);
+    expect(body.reply).toContain("unavailable");
+  });
   test("a stale confirmation cannot answer the next step in another tab", async () => {
     resetMemoryStore();
     const token = crypto.randomUUID();
@@ -36,7 +62,7 @@ describe("POST /api/chat", () => {
     const fresh = startCase("bereavement");
     const advanced = applyCitizenReply(fresh, "yes").caseSnapshot;
     await store.saveCase("stale-tab-case", advanced, owner.hash);
-    const response = await POST(ownedChatRequest({ caseId: "stale-tab-case", caseSnapshot: fresh, intent: "affirmative" }, token));
+    const response = await POST(ownedChatRequest({ caseId: "stale-tab-case", caseSnapshot: fresh, action: "reply", intent: "affirmative" }, token));
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe("CASE_CONFLICT");
     expect((await store.getCase("stale-tab-case", owner.hash))?.snapshot).toEqual(advanced);
@@ -45,7 +71,7 @@ describe("POST /api/chat", () => {
     delete process.env.OPENROUTER_API_KEY;
 
     const response = await POST(
-      chatRequest({ message: "हाँ", caseSnapshot: bereavement }),
+      chatRequest({ action: "reply", intent: "affirmative", caseSnapshot: bereavement }),
     );
     const body = await response.json();
 
@@ -55,15 +81,7 @@ describe("POST /api/chat", () => {
 
   test("rejects client requests to advance simulated time", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        async generate() {
-          throw new Error("the provider must not be called for a day advance");
-        }
-      },
-    }));
+    mock.module("ai", () => ({ generateText: async () => { throw new Error("must not call provider for explicit actions"); } }));
 
     const response = await POST(
       chatRequest({ action: "advance-day", caseSnapshot: bereavement }),
@@ -89,7 +107,7 @@ describe("POST /api/chat", () => {
   ])("rejects a client-authored case snapshot", async (caseSnapshot) => {
     delete process.env.OPENROUTER_API_KEY;
 
-    const response = await POST(chatRequest({ message: "हाँ", caseSnapshot }));
+    const response = await POST(chatRequest({ action: "reply", intent: "affirmative", caseSnapshot }));
 
     expect(response.status).toBe(400);
   });
@@ -110,154 +128,24 @@ describe("POST /api/chat", () => {
 
   test("a clear reply never reaches the provider", async () => {
     process.env.OPENROUTER_API_KEY = "test-key";
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        async generate() {
-          throw new Error("the provider must not be called for a reply the reader can classify");
-        }
-      },
-    }));
+    mock.module("ai", () => ({ generateText: async () => { throw new Error("must not call provider for explicit actions"); } }));
 
-    const response = await POST(chatRequest({ message: "हाँ", caseSnapshot: bereavement }));
+    const response = await POST(chatRequest({ action: "reply", intent: "affirmative", caseSnapshot: bereavement }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
     expect(body.caseSnapshot.nodes[0].state).toBe("done");
-  });
-
-  test("the clerk reads a free-form reply the deterministic reader cannot", async () => {
-    process.env.OPENROUTER_API_KEY = "test-key";
-    let observedTimeout: number | undefined;
-    mock.module("@openrouter/ai-sdk-provider", () => ({
-      createOpenRouter: () => () => ({ modelId: "test-model" }),
-    }));
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        private settings: any;
-
-        constructor(settings: any) {
-          this.settings = settings;
-        }
-
-        async generate(options: { timeout?: number }) {
-          observedTimeout = options.timeout;
-          await this.settings.tools.reportIntent.execute({ intent: "affirmative" });
-          return { text: "ignored" };
-        }
-      },
-    }));
-
-    const response = await POST(
-      chatRequest({ message: "जी बिल्कुल, वही लिखा है", caseSnapshot: bereavement }),
-    );
-    const body = await response.json();
-
-    expect(observedTimeout).toBe(8_000);
-    expect(body.caseSnapshot.nodes[0].state).toBe("done");
-    expect(body.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
-  });
-
-  test("redacts citizen identifiers before an ambiguous reply reaches the clerk", async () => {
-    process.env.OPENROUTER_API_KEY = "test-key";
-    let prompt = "";
-    mock.module("@openrouter/ai-sdk-provider", () => ({
-      createOpenRouter: () => () => ({ modelId: "test-model" }),
-    }));
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        async generate(options: { prompt: string }) {
-          prompt = options.prompt;
-          return { text: "ignored" };
-        }
-      },
-    }));
-
-    await POST(chatRequest({
-      message: "maybe ABCDE1234F account 1234567890123456 citizen@example.com",
-      caseSnapshot: bereavement,
-    }));
-
-    expect(prompt).toContain("[pan]");
-    expect(prompt).toContain("[account]");
-    expect(prompt).toContain("[email]");
-    expect(prompt).not.toContain("ABCDE1234F");
-    expect(prompt).not.toContain("1234567890123456");
-    expect(prompt).not.toContain("citizen@example.com");
-  });
-
-  test("clerk prose can never replace the authorized reply or invent policy", async () => {
-    process.env.OPENROUTER_API_KEY = "test-key";
-    mock.module("@openrouter/ai-sdk-provider", () => ({
-      createOpenRouter: () => () => ({ modelId: "test-model" }),
-    }));
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        async generate() {
-          return { text: "Pay an invented ₹999 fee — your claim is already approved." };
-        }
-      },
-    }));
-
-    const response = await POST(
-      chatRequest({ message: "पता नहीं क्या कहूँ", caseSnapshot: bereavement }),
-    );
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.reply).not.toContain("₹99");
-    expect(body.reply).not.toContain("approved");
-    expect(body.caseSnapshot).toEqual(bereavement);
-  });
-
-  test("a negative reply cannot be turned into an advance by the provider", async () => {
-    process.env.OPENROUTER_API_KEY = "test-key";
-    mock.module("@openrouter/ai-sdk-provider", () => ({
-      createOpenRouter: () => () => ({ modelId: "test-model" }),
-    }));
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        private settings: any;
-
-        constructor(settings: any) {
-          this.settings = settings;
-        }
-
-        async generate() {
-          // Even if the clerk misreports, the reader already read a denial.
-          await this.settings.tools.reportIntent.execute({ intent: "affirmative" });
-          return { text: "आपका दावा स्वीकृत हो गया है।" };
-        }
-      },
-    }));
-
-    const response = await POST(
-      chatRequest({ message: "नहीं, अभी नहीं", caseSnapshot: bereavement }),
-    );
-    const body = await response.json();
-
-    expect(body.caseSnapshot).toEqual(bereavement);
-    expect(body.reply).not.toContain("स्वीकृत");
   });
 
   test("answers in the requested language", async () => {
     delete process.env.OPENROUTER_API_KEY;
 
     const hindi = await (await POST(
-      chatRequest({ message: "हाँ", locale: "hi", caseSnapshot: bereavement }),
+      chatRequest({ action: "reply", intent: "affirmative", locale: "hi", caseSnapshot: bereavement }),
     )).json();
     const english = await (await POST(
-      chatRequest({ message: "yes", locale: "en", caseSnapshot: bereavement }),
+      chatRequest({ action: "reply", intent: "affirmative", locale: "en", caseSnapshot: bereavement }),
     )).json();
 
     expect(hindi.reply).toBe("ठीक है। अब नाम मिलान करते हैं।");
@@ -268,44 +156,9 @@ describe("POST /api/chat", () => {
     expect(english.caseSnapshot).toEqual(hindi.caseSnapshot);
   });
 
-  test("tells the clerk which language the citizen is speaking", async () => {
-    process.env.OPENROUTER_API_KEY = "test-key";
-    let instructions = "";
-    let prompt = "";
-    mock.module("@openrouter/ai-sdk-provider", () => ({
-      createOpenRouter: () => () => ({ modelId: "test-model" }),
-    }));
-    mock.module("ai", () => ({
-      isStepCount: () => () => false,
-      tool: (definition: unknown) => definition,
-      ToolLoopAgent: class {
-        private settings: any;
-
-        constructor(settings: any) {
-          this.settings = settings;
-          instructions = settings.instructions;
-        }
-
-        async generate(options: { prompt: string }) {
-          prompt = options.prompt;
-          await this.settings.tools.reportIntent.execute({ intent: "affirmative" });
-          return { text: "ignored" };
-        }
-      },
-    }));
-
-    await POST(
-      chatRequest({ message: "that is quite alright", locale: "en", caseSnapshot: bereavement }),
-    );
-
-    expect(instructions).toContain("English");
-    // The question it is asked to interpret is in the citizen's language.
-    expect(/[\u0900-\u097F]/.test(prompt)).toBe(false);
-  });
-
   test("rejects an unsupported locale", async () => {
     const response = await POST(
-      chatRequest({ message: "हाँ", locale: "fr", caseSnapshot: bereavement }),
+      chatRequest({ action: "reply", intent: "affirmative", locale: "fr", caseSnapshot: bereavement }),
     );
 
     expect(response.status).toBe(400);
@@ -320,7 +173,7 @@ describe("POST /api/chat", () => {
     const ownedRequest = ownedChatRequest({}, token);
     await store.saveCase(caseId, bereavement, browserOwner(ownedRequest).hash);
     const response = await POST(
-      ownedChatRequest({ message: "हाँ", caseId, caseSnapshot: bereavement }, token),
+      ownedChatRequest({ action: "reply", intent: "affirmative", caseId, caseSnapshot: bereavement }, token),
     );
 
     expect(response.status).toBe(200);
@@ -336,7 +189,7 @@ describe("POST /api/chat", () => {
     const caseId = crypto.randomUUID();
     const token = crypto.randomUUID();
     const snapshot = {
-      ...startCase("scholarship", "scholarship-v4"),
+      ...startCase("scholarship", "scholarship-v6"),
       artifacts: ["escalation-draft" as const],
       artifactDrafts: {
         "escalation-draft": {
@@ -354,7 +207,7 @@ describe("POST /api/chat", () => {
     };
     await store.saveCase(caseId, snapshot, browserOwner(ownedChatRequest({}, token)).hash);
 
-    const response = await POST(ownedChatRequest({ message: "हाँ", caseId, caseSnapshot: snapshot }, token));
+    const response = await POST(ownedChatRequest({ action: "reply", intent: "affirmative", caseId, caseSnapshot: snapshot }, token));
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -365,9 +218,7 @@ describe("POST /api/chat", () => {
     resetMemoryStore();
     const caseId = crypto.randomUUID();
     const token = crypto.randomUUID();
-    let snapshot = startCase("scholarship", "scholarship-v4");
-    snapshot = applyCitizenReply(snapshot, "yes").caseSnapshot;
-    snapshot = applyCitizenReply(snapshot, "yes").caseSnapshot;
+    let snapshot = startCase("scholarship", "scholarship-v6");
     await store.saveCase(caseId, snapshot, browserOwner(ownedChatRequest({}, token)).hash);
 
     const response = await POST(ownedChatRequest({
@@ -406,7 +257,7 @@ describe("POST /api/chat", () => {
 
     try {
       const response = await POST(ownedChatRequest(
-        { message: "हाँ", caseId, caseSnapshot: bereavement },
+        { action: "reply", intent: "affirmative", caseId, caseSnapshot: bereavement },
         token,
       ));
       expect(response.status).toBe(503);
@@ -424,7 +275,7 @@ describe("POST /api/chat", () => {
     await store.saveCase(caseId, bereavement, browserOwner(ownedChatRequest({}, ownerToken)).hash);
 
     const response = await POST(ownedChatRequest(
-      { message: "हाँ", caseId, caseSnapshot: bereavement },
+      { action: "reply", intent: "affirmative", caseId, caseSnapshot: bereavement },
       crypto.randomUUID(),
     ));
 
@@ -443,7 +294,7 @@ describe("POST /api/chat", () => {
     const snapshot = startCase("custom-ration-card");
 
     const response = await POST(
-      chatRequest({ message: "हाँ", caseSnapshot: snapshot }),
+      chatRequest({ action: "reply", intent: "affirmative", caseSnapshot: snapshot }),
     );
     const body = await response.json();
 
@@ -455,7 +306,7 @@ describe("POST /api/chat", () => {
 
   test("rejects a snapshot naming a workflow that does not exist", async () => {
     const response = await POST(
-      chatRequest({ message: "हाँ", caseSnapshot: { ...bereavement, workflowId: "invented" } }),
+      chatRequest({ action: "reply", intent: "affirmative", caseSnapshot: { ...bereavement, workflowId: "invented" } }),
     );
 
     expect(response.status).toBe(400);

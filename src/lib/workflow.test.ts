@@ -121,9 +121,9 @@ describe("every user-facing string is bilingual", () => {
 describe("workflow seeds", () => {
   test("a student without a response gets payment-check preparation first", () => {
     const fresh = startCase("scholarship");
-    const first = currentNode(fresh)!;
-    expect(first.detail.en).toContain("Public Financial Management System");
-    const check = currentNode(applyCitizenReply(fresh, "yes").caseSnapshot)!;
+    const check = currentNode(fresh)!;
+    expect(check.id).toBe("pfms-trace");
+    expect(check.detail.en).toContain("PFMS");
     expect(check.link?.url).toBe("https://pfms.nic.in/SitePages/DBT_StatusTracker.aspx");
     expect(check.visit?.carry.length).toBeGreaterThan(0);
     expect(check.visit?.script.en).toContain("payment");
@@ -170,7 +170,7 @@ describe("workflow seeds", () => {
   test("all bundled journeys are powered by one engine and share step types", () => {
     expect(workflowIds).toEqual(["bereavement", "scholarship", "punjab-income", "aadhaar-update", "epfo-claim"]);
     expect(sharedStepTypes()).toEqual(
-      expect.arrayContaining(["document-explain", "desk-verification", "case-complete"]),
+      expect.arrayContaining(["desk-verification", "case-complete"]),
     );
   });
 
@@ -331,7 +331,7 @@ describe("advanceDay", () => {
 
     expect(result.caseSnapshot).toBe(freshCase);
     expect(result.caseSnapshot.day).toBe(0);
-    expect(currentNode(result.caseSnapshot)?.id).toBe("nsp-status");
+    expect(currentNode(result.caseSnapshot)?.id).toBe("pfms-trace");
   });
 
 });
