@@ -255,20 +255,20 @@ export function CitizenDiscovery({
               <span className="mt-1 w-fit rounded-full bg-[#e8f4ee] px-2 py-1 text-xs font-extrabold text-[var(--green)]">
                 {formatJurisdiction(result.jurisdiction, locale)}
               </span>
-              {isSyntheticSeed(result.workflowId) && (
+              {/* {isSyntheticSeed(result.workflowId) && (
                 <span className="w-fit rounded-full bg-[#fff1cf] px-2 py-1 text-xs font-extrabold text-[#79540d]">
                   {locale === "hi"
                     ? "कृत्रिम उदाहरण यात्रा"
                     : "Synthetic example journey"}
                 </span>
-              )}
+              )} */}
               <ul className="mt-1 list-disc pl-4 text-sm text-[#536059]">
                 {result.matchReasons.map((reason) => (
                   <li key={reason}>{reason}</li>
                 ))}
               </ul>
               <button
-                className="mt-2 min-h-11 rounded-xl bg-[var(--marigold)] font-extrabold text-[#2f250f] disabled:opacity-50"
+                className="mt-2 min-h-11 rounded-xl bg-(--marigold) font-extrabold text-[#2f250f] disabled:opacity-50"
                 type="button"
                 disabled={starting.current}
                 onClick={() => void startResult(result.workflowVersionId)}

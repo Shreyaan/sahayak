@@ -5,6 +5,30 @@ function report(snapshot: CaseSnapshot, optionId: string) {
   return recordDeskReport(snapshot, { optionId, response: 'SYNTHETIC verification response', referenceNumber: `SYN-${optionId}`, responseDate: '2026-09-06', recordedAt: '2026-09-06T12:00:00Z' }).caseSnapshot;
 }
 
+test('Punjab certificate remains unresolved through support and a failed download', () => {
+  expect(getWorkflowDefinition('punjab-income')).toBeDefined();
+  let snapshot = startCase('punjab-income');
+  expect(workflowDefinitionSchema.safeParse(getWorkflowDefinition('punjab-income')).success).toBe(true);
+  expect(currentNode(snapshot)?.visit?.office.en).toContain('Sewa Kendra');
+  snapshot = report(snapshot, 'pending');
+  expect(currentNode(snapshot)?.id).toBe('punjab-support');
+  snapshot = report(snapshot, 'no-answer');
+  expect(currentNode(snapshot)?.id).toBe('punjab-support');
+  snapshot = report(snapshot, 'acknowledged');
+  expect(snapshot.nodes.find(n => n.id === 'punjab-status')?.state).toBe('blocked');
+  snapshot = report(snapshot, 'waiting');
+  expect(currentNode(snapshot)?.id).toBe('punjab-follow-up');
+  snapshot = report(snapshot, 'issued');
+  snapshot = applyCitizenReply(snapshot, 'no').caseSnapshot;
+  expect(currentNode(snapshot)?.id).toBe('punjab-support');
+  expect(snapshot.nodes.filter(n => n.state === 'needs-you')).toHaveLength(1);
+  snapshot = report(snapshot, 'issued');
+  snapshot = applyCitizenReply(snapshot, 'yes').caseSnapshot;
+  expect(currentNode(snapshot)?.id).toBe('case-done');
+  expect(snapshot.nodes.find(n => n.id === 'punjab-status')?.state).toBe('done');
+  expect(snapshot.reports).toHaveLength(6);
+});
+
 test('Aadhaar rejection stays unresolved through a help acknowledgement and supports another setback', () => {
   expect(getWorkflowDefinition('aadhaar-update')).toBeDefined();
   let snapshot = startCase('aadhaar-update');

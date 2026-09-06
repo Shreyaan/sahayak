@@ -6,6 +6,20 @@ beforeAll(async () => {
   await seedPublishedWorkflows();
 });
 
+test('Punjab income certificate search respects state scope and exact version', async () => {
+  const query = 'income certificate pending sewa kendra';
+  const result = await searchWorkflows({ query, locale: 'en', stateCode: 'PB' });
+  expect(result.results.map(row => row.workflowId)).toEqual(['punjab-income']);
+  expect(result.results[0]?.workflowVersionId).toBe('punjab-income-v1');
+  expect(result.results[0]?.jurisdiction).toMatchObject({ scope: 'state', stateCode: 'PB' });
+  for (const stateCode of [undefined, 'KA']) {
+    const elsewhere = await searchWorkflows({ query, locale: 'en', stateCode });
+    expect(elsewhere.results).toEqual([]);
+  }
+  const unrelated = await searchWorkflows({ query: 'birth certificate pending', locale: 'en', stateCode: 'PB' });
+  expect(unrelated.results).toEqual([]);
+});
+
 describe("searchWorkflows", () => {
   test("never offers a death journey for a licence query that explicitly excludes it", async () => {
     const response = await searchWorkflows({

@@ -76,6 +76,23 @@ const seeds = [
       hi: "EPFO पीएफ PF भविष्य निधि अपना निकासी दावा लंबित अस्वीकृत वापस भुगतान पैसा नहीं आया दावा अटका EPFiGMS शिकायत संदर्भ रिमाइंडर।",
     },
   },
+  {
+    workflowId: "punjab-income" as const, workflowVersionId: "punjab-income-v1", version: 1, stateCode: "PB",
+    trust: {
+      provenance: "legacy-verification-pending", reviewDate: null,
+      verificationMethod: "Synthetic Punjab demonstration. Official service guidance consulted on 7 September 2026. Independent expert review and real citizen outcomes are pending. No government contact or application submission by Sahayak.",
+      currentExpertSupportCount: 0, hasUnresolvedDisagreement: false,
+      sourceLinks: [
+        { label: "Punjab: Sewa Kendra support and 1100", url: "https://dit.punjab.gov.in/projects/sewa-kendras/" },
+        { label: "Punjab: Income Certificate service guidance", url: "https://punjab.gov.in/wp-content/uploads/2025/09/Income-Certificate.pdf" },
+        { label: "Jalandhar district: official tracking and certificate service links", url: "https://jalandhar.nic.in/sewa-kendra/" },
+      ],
+    },
+    documents: {
+      en: "Punjab income certificate application pending rejected delayed stuck sewa kendra connect punjab aamdani aay certificate nahi mila income certificate atka hai support 1100.",
+      hi: "पंजाब आय प्रमाणपत्र आवेदन लंबित अटका अस्वीकृत सेवा केंद्र आय सर्टिफिकेट नहीं मिला आय प्रमाण पत्र देरी सहायता 1100।",
+    },
+  },
 ];
 
 export async function seedPublishedWorkflows(): Promise<void> {
@@ -89,7 +106,8 @@ export async function seedPublishedWorkflows(): Promise<void> {
       workflowId: seed.workflowId,
       version: seed.version,
       status: "published",
-      scope: "central",
+      scope: "stateCode" in seed ? "state" : "central",
+      stateCode: "stateCode" in seed ? seed.stateCode : null,
       definition,
       trust: trustMetadataSchema.parse(seed.trust),
       publishedAt: new Date("2026-09-06T00:00:00.000Z"),

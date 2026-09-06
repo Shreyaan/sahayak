@@ -201,6 +201,7 @@ export async function searchWorkflows(input: SearchWorkflowsInput): Promise<Sear
   const topicMatches: Record<string, boolean> = {
     scholarship,
     bereavement,
+    "punjab-income": /(?:income|aamdani|aay)\s+(?:certificate|certificat|praman)|आय\s*(?:प्रमाण|सर्टिफिकेट)/i.test(topicText),
     "aadhaar-update": !scholarship && !bereavement && /\b(?:aadhaar|aadhar|adhar|uidai|myaadhaar)\b|आधार/i.test(topicText) && /update|correct|reject|अपडेट|सुधार|अस्वीकृत|रिजेक्ट/i.test(topicText),
     "epfo-claim": !bereavement && !scholarship && /\b(?:epfo|pf|epfigms|provident fund)\b|पीएफ|भविष्य निधि/i.test(topicText) && /claim|withdraw|settled|paisa|money|payment|दाव|निकासी|पैसा|भुगतान/i.test(topicText),
   };

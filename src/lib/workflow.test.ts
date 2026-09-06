@@ -168,7 +168,7 @@ describe("workflow seeds", () => {
   });
 
   test("all bundled journeys are powered by one engine and share step types", () => {
-    expect(workflowIds).toEqual(["bereavement", "scholarship", "aadhaar-update", "epfo-claim"]);
+    expect(workflowIds).toEqual(["bereavement", "scholarship", "punjab-income", "aadhaar-update", "epfo-claim"]);
     expect(sharedStepTypes()).toEqual(
       expect.arrayContaining(["document-explain", "desk-verification", "case-complete"]),
     );

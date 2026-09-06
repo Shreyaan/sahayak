@@ -39,7 +39,7 @@
       "copy": "Choose a supported problem. Each journey keeps your next action and recorded responses together.",
       "count": "{count} published",
       "loading": "Loading published journeys…",
-      "flagship": "Flagship",
+
       "steps": "{count} actions",
       "start": "Start journey",
       "error": "The published workflow library is unavailable right now."
