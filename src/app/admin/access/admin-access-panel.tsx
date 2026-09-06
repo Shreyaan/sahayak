@@ -66,19 +66,20 @@ export function AdminAccessPanel({ initialAccess }: { initialAccess: AdminAccess
   const mutationError = invite.error || cancel.error || changeAccess.error;
 
   return (
-    <section className="admin-access" aria-labelledby="access-heading">
-      <div className="admin-title-row">
+    <section className="mt-[18px] grid gap-[18px] rounded-[22px] border border-[var(--line)] bg-white/70 p-[clamp(18px,5vw,32px)] shadow-[0_14px_40px_rgba(52,43,27,.07)]" aria-labelledby="access-heading">
+      <div>
         <div>
-          <p className="eyebrow">Protected workspace</p>
-          <h1 id="access-heading">Expert access</h1>
-          <p>Invite verified reviewers and pause or restore their access.</p>
+          <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] leading-[1.5] text-[#536059]">Protected workspace</p>
+          <h1 className="mt-2 mb-1 text-[clamp(2rem,7vw,3rem)] leading-[1.05] tracking-[-.04em]" id="access-heading">Expert access</h1>
+          <p className="text-[#536059] leading-[1.5]">Invite verified reviewers and pause or restore their access.</p>
         </div>
       </div>
 
-      <form className="admin-invite" onSubmit={submitInvitation}>
-        <label htmlFor="expert-email">Expert email</label>
-        <div>
+      <form className="grid gap-2 rounded-[22px] border border-[var(--line)] bg-white/70 p-[18px]" onSubmit={submitInvitation}>
+        <label className="mt-2 text-[.82rem] font-extrabold" htmlFor="expert-email">Expert email</label>
+        <div className="grid gap-2.5 min-[620px]:grid-cols-[1fr_auto]">
           <input
+            className="w-full min-h-12 px-3.5 py-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)]"
             id="expert-email"
             name="email"
             type="email"
@@ -88,24 +89,24 @@ export function AdminAccessPanel({ initialAccess }: { initialAccess: AdminAccess
             onChange={(event) => setEmail(event.target.value)}
             placeholder="expert@example.org"
           />
-          <button className="primary-action" type="submit" disabled={invite.isPending}>
+          <button className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55 min-h-12" type="submit" disabled={invite.isPending}>
             {invite.isPending ? "Sending…" : "Invite expert"}
           </button>
         </div>
       </form>
 
-      {mutationError ? <p className="admin-error" role="alert">{mutationError.message}</p> : null}
-      {status ? <p className="admin-success" role="status">{status}</p> : null}
+      {mutationError ? <p className="m-0 mt-2 font-extrabold text-[#8b2e24]" role="alert">{mutationError.message}</p> : null}
+      {status ? <p className="m-0 mt-2 font-extrabold text-[var(--green)]" role="status">{status}</p> : null}
 
-      <section className="admin-section" aria-labelledby="pending-heading">
-        <h2 id="pending-heading">Pending invitations</h2>
-        {access.data.invitations.length === 0 ? <p className="admin-empty">No pending invitations.</p> : (
-          <ul className="access-list">
+      <section className="rounded-[22px] border border-[var(--line)] bg-white/70 p-[18px]" aria-labelledby="pending-heading">
+        <h2 className="mb-3.5 text-[1.1rem]" id="pending-heading">Pending invitations</h2>
+        {access.data.invitations.length === 0 ? <p className="m-0 text-[#69736e]">No pending invitations.</p> : (
+          <ul className="grid gap-2.5 m-0 p-0 list-none">
             {access.data.invitations.map((invitation) => (
-              <li key={invitation.id}>
-                <div><strong>{invitation.email}</strong><small>Pending</small></div>
+              <li className="flex flex-wrap items-center justify-between gap-3 p-3.5 border border-[var(--line)] rounded-[14px] bg-white" key={invitation.id}>
+                <div><strong className="block wrap-anywhere">{invitation.email}</strong><small className="block wrap-anywhere mt-1 text-[#69736e]">Pending</small></div>
                 <button
-                  className="secondary-action"
+                  className="rounded-xl border-0 bg-[#eee5d8] px-3.5 py-2.5 font-extrabold text-[var(--green)] min-h-11"
                   type="button"
                   disabled={cancel.isPending}
                   onClick={() => cancel.mutate(invitation.id)}
@@ -117,21 +118,21 @@ export function AdminAccessPanel({ initialAccess }: { initialAccess: AdminAccess
         )}
       </section>
 
-      <section className="admin-section" aria-labelledby="experts-heading">
-        <h2 id="experts-heading">Experts</h2>
-        {access.data.members.length === 0 ? <p className="admin-empty">No experts yet.</p> : (
-          <ul className="access-list">
+      <section className="rounded-[22px] border border-[var(--line)] bg-white/70 p-[18px]" aria-labelledby="experts-heading">
+        <h2 className="mb-3.5 text-[1.1rem]" id="experts-heading">Experts</h2>
+        {access.data.members.length === 0 ? <p className="m-0 text-[#69736e]">No experts yet.</p> : (
+          <ul className="grid gap-2.5 m-0 p-0 list-none">
             {access.data.members.map((member) => {
               const removed = member.role === "revoked";
               return (
-                <li key={member.id}>
+                <li className="flex flex-wrap items-center justify-between gap-3 p-3.5 border border-[var(--line)] rounded-[14px] bg-white" key={member.id}>
                   <div>
-                    <strong>{member.user.name}</strong>
-                    <small>{member.user.email} · {removed ? "Access removed" : member.role === "owner" ? "Administrator" : "Expert"}</small>
+                    <strong className="block wrap-anywhere">{member.user.name}</strong>
+                    <small className="block wrap-anywhere mt-1 text-[#69736e]">{member.user.email} · {removed ? "Access removed" : member.role === "owner" ? "Administrator" : "Expert"}</small>
                   </div>
                   {member.role !== "owner" ? (
                     <button
-                      className="secondary-action"
+                      className="rounded-xl border-0 bg-[#eee5d8] px-3.5 py-2.5 font-extrabold text-[var(--green)] min-h-11"
                       type="button"
                       disabled={changeAccess.isPending}
                       onClick={() => {

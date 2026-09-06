@@ -35,20 +35,20 @@ export function TrustDisclosure({ trust, jurisdiction, locale }: { trust: TrustM
     : trust.verificationMethod;
 
   return (
-    <details className="trust-disclosure">
-      <summary>{text.title}</summary>
-      <dl>
-        <dt>{text.provenance}</dt><dd>{text.provenanceValue[trust.provenance]}</dd>
-        <dt>{text.scope}</dt><dd>{formatJurisdiction(jurisdiction, locale)}</dd>
-        <dt>{text.reviewDate}</dt><dd>{formatReviewDate(trust.reviewDate, locale)}</dd>
-        <dt>{text.verification}</dt><dd>{verification}</dd>
-        <dt>{text.expertSupport}</dt><dd>{trust.currentExpertSupportCount}</dd>
-        {trust.sourceLinks.length > 0 && <><dt>{text.sources}</dt>
-        <dd><ul>{trust.sourceLinks.map((source) => (
+    <details className="mt-2.5 text-[#536059] text-[.8rem]">
+      <summary className="cursor-pointer text-[var(--green)] font-extrabold">{text.title}</summary>
+      <dl className="mt-2">
+        <dt className="mt-[7px] text-[var(--green)] text-[.72rem] font-extrabold">{text.provenance}</dt><dd className="mt-0.5 leading-[1.45]">{text.provenanceValue[trust.provenance]}</dd>
+        <dt className="mt-[7px] text-[var(--green)] text-[.72rem] font-extrabold">{text.scope}</dt><dd className="mt-0.5 leading-[1.45]">{formatJurisdiction(jurisdiction, locale)}</dd>
+        <dt className="mt-[7px] text-[var(--green)] text-[.72rem] font-extrabold">{text.reviewDate}</dt><dd className="mt-0.5 leading-[1.45]">{formatReviewDate(trust.reviewDate, locale)}</dd>
+        <dt className="mt-[7px] text-[var(--green)] text-[.72rem] font-extrabold">{text.verification}</dt><dd className="mt-0.5 leading-[1.45]">{verification}</dd>
+        <dt className="mt-[7px] text-[var(--green)] text-[.72rem] font-extrabold">{text.expertSupport}</dt><dd className="mt-0.5 leading-[1.45]">{trust.currentExpertSupportCount}</dd>
+        {trust.sourceLinks.length > 0 && <><dt className="mt-[7px] text-[var(--green)] text-[.72rem] font-extrabold">{text.sources}</dt>
+        <dd className="mt-0.5 leading-[1.45]"><ul className="mt-1 pl-[18px]">{trust.sourceLinks.map((source) => (
           <li key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.label}</a></li>
         ))}</ul></dd></>}
       </dl>
-      {trust.hasUnresolvedDisagreement && <p className="trust-warning" role="alert">{text.disagreement}</p>}
+      {trust.hasUnresolvedDisagreement && <p className="mt-2.5 text-[#7c2b21] font-extrabold" role="alert">{text.disagreement}</p>}
     </details>
   );
 }

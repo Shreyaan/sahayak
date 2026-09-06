@@ -11,7 +11,7 @@ export function LanguageSwitcher() {
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="language-switcher" role="group" aria-label="Language">
+    <div className="inline-flex gap-0.5 p-0.5 rounded-full border border-[var(--line,#d8ded8)] bg-white" role="group" aria-label="Language">
       {locales.map((locale) => (
         <button
           key={locale}
@@ -19,7 +19,7 @@ export function LanguageSwitcher() {
           lang={locale}
           disabled={pending}
           aria-pressed={locale === active}
-          className={locale === active ? "active" : ""}
+          className="min-h-11 px-3 py-1.5 border-0 rounded-full bg-transparent text-[#4a5450] text-[.74rem] font-semibold aria-pressed:bg-[var(--green,#1f6f4a)] aria-pressed:text-white disabled:opacity-60"
           onClick={() => startTransition(() => void changeLocale(locale))}
         >
           {localeNames[locale]}

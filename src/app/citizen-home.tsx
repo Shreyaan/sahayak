@@ -86,7 +86,7 @@ export function CitizenHome({
       <p className="mt-3 text-sm text-[#65716b]">{locale === "hi" ? "स्वतंत्र प्रोटोटाइप · सरकारी सेवा नहीं · उदाहरणों में केवल काल्पनिक जानकारी दें" : "Independent prototype · Not a government service · Use fictional details in these examples"}</p>
     </section>
 
-    {feedback && <p className="feedback" role="alert">{feedback}</p>}
+    {feedback && <p className="m-0 mt-3 flex items-center gap-1.5 rounded-[10px] bg-[#f2f6f3] px-3 py-2.5 text-[.92rem] text-[#33413a]" role="alert">{feedback}</p>}
 
     <div className="grid gap-4">
       <section className="rounded-[24px] border border-[var(--line)] bg-white/75 p-6 shadow-[0_18px_50px_rgba(52,43,27,.06)] max-sm:p-4">

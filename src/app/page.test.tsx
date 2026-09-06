@@ -128,7 +128,9 @@ describe("citizen action priority", () => {
 
     const actionHeading = await screen.findByRole("heading", { name: "Understand the NSP status" });
     const actionPanel = actionHeading.closest("section");
-    const timeline = document.querySelector("ol.timeline");
+    // The journey history is the page's only ordered list; matched by structure so
+    // the assertion survives styling changes.
+    const timeline = document.querySelector("ol");
 
     expect(actionPanel).not.toBeNull();
     expect(timeline).not.toBeNull();

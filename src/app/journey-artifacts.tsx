@@ -40,7 +40,7 @@ export function JourneyArtifacts({
 
   return (
     <section className="mt-6 border-t border-[var(--line)] pt-6" aria-labelledby="journey-documents-title">
-      <p className="eyebrow">{text.eyebrow}</p>
+      <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text.eyebrow}</p>
       <h2 className="mb-0 mt-1 text-xl font-extrabold" id="journey-documents-title">{text.heading}</h2>
       <p className="mb-4 mt-1 text-sm leading-relaxed text-[#536059]">{text.intro}</p>
 

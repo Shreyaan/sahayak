@@ -31,29 +31,53 @@ export function transitionFeedback(reply: string, actedStepId: string | undefine
   return actedStepId && nextStepId && actedStepId !== nextStepId ? "" : reply;
 }
 
+/** `.visit-card p` (globals.css) styles any plain paragraph inside the card; kept as one string so every plain line matches it. */
+const VISIT_DETAIL_TEXT = "m-[6px_0px_0px] text-[#536059] text-[.86rem] leading-[1.5]";
+/** `.visit-card .visit-label` overrides color/size/weight but the margin and line-height still cascade in from `.visit-card p`. */
+const VISIT_LABEL_TEXT = "mt-3 mx-0 mb-0 text-[var(--green)] text-[.72rem] leading-[1.5] font-extrabold tracking-[.08em] uppercase";
+
 function VisitCard({ node, locale }: { node: WorkflowDefinition["nodes"][number]; locale: Locale }) {
   const text = useTranslations("citizen");
   if (!node.visit) return null;
 
   return (
-    <div className="visit-card">
-      <p className="eyebrow">{text("visit.eyebrow")}</p>
-      <strong>{translate(node.visit.office, locale)}</strong>
-      <p>{translate(node.visit.why, locale)}</p>
-      <p className="visit-label">{text("visit.carry")}</p>
-      <ul>{tList(node.visit.carry, locale).map((item) => <li key={item}>{item}</li>)}</ul>
-      <p className="visit-label">{text("visit.script")}</p>
-      <p className="visit-script">“{translate(node.visit.script, locale)}”</p>
-      <p className="visit-label">{text("visit.expect")}</p>
-      <p>{translate(node.visit.expect, locale)}</p>
-      <p className="visit-label">{text("visit.collect")}</p>
-      <p>{translate(node.visit.collect, locale)}</p>
-      <p className="visit-warning">
+    <div className="mt-3 rounded-2xl border border-[var(--line)] bg-white p-3.5 text-[var(--ink)]">
+      <p className="m-0 mt-1.5 text-[.72rem] font-extrabold uppercase tracking-[.12em] leading-[1.5] text-[var(--green)]">{text("visit.eyebrow")}</p>
+      <strong className="mt-1.5 block">{translate(node.visit.office, locale)}</strong>
+      <p className={VISIT_DETAIL_TEXT}>{translate(node.visit.why, locale)}</p>
+      <p className={VISIT_LABEL_TEXT}>{text("visit.carry")}</p>
+      <ul className="mt-1.5 pl-5 text-[.86rem] leading-[1.6] text-[#536059]">{tList(node.visit.carry, locale).map((item) => <li key={item}>{item}</li>)}</ul>
+      <p className={VISIT_LABEL_TEXT}>{text("visit.script")}</p>
+      <p className={`${VISIT_DETAIL_TEXT} rounded-[10px] bg-[#f3efe7] px-2.5 py-2 italic`}>“{translate(node.visit.script, locale)}”</p>
+      <p className={VISIT_LABEL_TEXT}>{text("visit.expect")}</p>
+      <p className={VISIT_DETAIL_TEXT}>{translate(node.visit.expect, locale)}</p>
+      <p className={VISIT_LABEL_TEXT}>{text("visit.collect")}</p>
+      <p className={VISIT_DETAIL_TEXT}>{translate(node.visit.collect, locale)}</p>
+      <p className="mx-0 mt-3 mb-0 rounded-[10px] bg-[#fbeceb] px-2.5 py-2 text-[.86rem] leading-[1.5] font-bold text-[#8b2e24]">
         {text("visit.warning")}
       </p>
     </div>
   );
 }
+
+/**
+ * `.timeline li.<state>` (globals.css) recolors a history row per node state; `pending` has no
+ * override there, so it keeps the base `.timeline li` grey below.
+ */
+const TIMELINE_TEXT_CLASS: Record<string, string> = {
+  "needs-you": "text-[var(--ink)]",
+  done: "text-[var(--green)]",
+  verifying: "text-[#7a530a]",
+  blocked: "text-[#8b2e24]",
+};
+
+/** `.<state> .dot` (globals.css); unmatched states fall back to an unfilled ring in the row's own color. */
+const TIMELINE_DOT_CLASS: Record<string, string> = {
+  done: "bg-[var(--green)]",
+  "needs-you": "bg-[var(--marigold)] border-[var(--marigold)]",
+  verifying: "bg-[repeating-linear-gradient(45deg,#b8801a,#b8801a_3px,transparent_3px,transparent_6px)] border-[#b8801a]",
+  blocked: "bg-[#8b2e24] border-[#8b2e24]",
+};
 
 export function HomeContent() {
   const text = useTranslations("citizen");
@@ -394,9 +418,9 @@ export function HomeContent() {
 
   return (
     <main className={`mx-auto min-h-screen w-full px-[18px] pt-[18px] pb-[92px] min-[760px]:pt-[30px] ${contributorMode || !caseSnapshot ? "max-w-[1180px]" : "max-w-[520px]"}`}>
-      <header>
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <button
-          className="brand cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--ink)]"
+          className="text-[1.3rem] font-extrabold cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--ink)]"
           type="button"
           onClick={resetDemo}
           title={text("case.startOver")}
@@ -404,10 +428,10 @@ export function HomeContent() {
         >
           {common("brand")}
         </button>
-        <div className="header-actions">
+        <div className="flex items-center gap-[10px]">
           <LanguageSwitcher />
           <button
-            className="author-link"
+            className="inline-flex min-h-11 items-center border-0 bg-transparent px-1 text-[.82rem] font-bold text-[var(--green)]"
             type="button"
             aria-pressed={contributorMode}
             onClick={toggleContributorMode}
@@ -423,30 +447,30 @@ export function HomeContent() {
         <CitizenHome locale={locale} savedCases={savedCases} feedback={feedback} onStart={startJourney} onResume={resumeCase} />
       ) : (
         <>
-          <section className="case-card">
-            <div className="case-heading">
+          <section className="rounded-[22px] border border-[var(--line)] bg-[rgba(255,255,255,.55)] p-5 shadow-[0_14px_40px_rgba(52,43,27,.07)]">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="eyebrow">{text("case.eyebrow")}</p>
-                <h2>{translate(workflow.title, locale)}</h2>
-                <p className="case-subtitle">{translate(workflow.subtitle, locale)}</p>
+                <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("case.eyebrow")}</p>
+                <h2 className="m-0 mt-1 text-[1.15rem]">{translate(workflow.title, locale)}</h2>
+                <p className="m-[2px_0px_0px] text-[.78rem] text-[#7a827e]">{translate(workflow.subtitle, locale)}</p>
               </div>
             </div>
 
             {isSyntheticSeed(caseSnapshot.workflowId) && <p className="mt-4 w-fit rounded-full bg-[#fff1cf] px-3 py-1 text-xs font-extrabold text-[#79540d]">{locale === "hi" ? "कृत्रिम उदाहरण यात्रा और रिकॉर्ड" : "Synthetic example journey and records"}</p>}
 
-            <section className="action-panel" aria-live="polite">
+            <section className="mt-4 rounded-[18px] border-2 border-[var(--green)] bg-white p-4 shadow-[0_10px_30px_rgba(28,35,31,.08)]" aria-live="polite">
               {current ? (
                 <>
-                  <p className="eyebrow">{text("action.eyebrow")}</p>
-                  <h2 ref={actionHeading} tabIndex={-1} className="scroll-mt-5 outline-none">{actionTitle}</h2>
-                  {showDetail && <p className="action-detail">{actionDetail}</p>}
-                  <p className="action-question">{actionAsk}</p>
+                  <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("action.eyebrow")}</p>
+                  <h2 ref={actionHeading} tabIndex={-1} className="mx-0 mt-1 mb-1.5 text-[1.15rem] scroll-mt-5 outline-none">{actionTitle}</h2>
+                  {showDetail && <p className="m-0 mb-2.5 text-[.92rem] text-[#5a6560]">{actionDetail}</p>}
+                  <p className="m-0 mb-3.5 text-[1.05rem] font-extrabold">{actionAsk}</p>
                   {current.link && (
-                    <p className="action-link">
-                      <a href={current.link.url} target="_blank" rel="noopener noreferrer">
+                    <p className="m-0 mb-3.5 grid gap-1">
+                      <a className="justify-self-start rounded-full border border-[var(--green)] px-4 py-2.5 font-extrabold text-[var(--green)] no-underline" href={current.link.url} target="_blank" rel="noopener noreferrer">
                         🔗 {translate(current.link.action, locale)}
                       </a>
-                      <small>{translate(current.link.collect, locale)}</small>
+                      <small className="text-[.78rem] text-[#67736d]">{translate(current.link.collect, locale)}</small>
                     </p>
                   )}
                   <div className="my-4 flex flex-wrap items-center gap-3 text-sm">
@@ -458,7 +482,7 @@ export function HomeContent() {
                   {current.report ? responseEntryStepId !== current.id ? (
                     <div className="mt-5 rounded-xl border border-[var(--line)] bg-[#f6f3eb] p-4">
                       <p className="m-0 text-sm leading-relaxed">{locale === "hi" ? "अभी जवाब नहीं मिला? पहले ऊपर की तैयारी का उपयोग करें। इसी ब्राउज़र में लौटकर यह कदम जारी रख सकते हैं।" : "No response yet? Use the preparation above first. You can return to this step in the same browser."}</p>
-                      <button type="button" className="primary-action mt-3" onClick={() => setResponseEntryStepId(current.id)}>{locale === "hi" ? "मेरे पास दर्ज करने के लिए जवाब है" : "I have a response to record"}</button>
+                      <button type="button" className="mt-3 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55" onClick={() => setResponseEntryStepId(current.id)}>{locale === "hi" ? "मेरे पास दर्ज करने के लिए जवाब है" : "I have a response to record"}</button>
                     </div>
                   ) : <DeskResponseForm
                     busy={busy}
@@ -466,9 +490,9 @@ export function HomeContent() {
                     locale={locale}
                     node={current}
                     onSubmit={(deskResponse) => ask({ action: "record-desk-response", deskResponse })}
-                  /> : <div className="action-buttons">
+                  /> : <div className="flex flex-wrap items-center gap-2.5">
                     <button
-                      className="primary-action"
+                      className="rounded-xl border-0 bg-[var(--green)] px-3.5 py-2.5 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-55"
                       type="button"
                       disabled={busy}
                       onClick={() => void answerWithIntent("affirmative")}
@@ -477,7 +501,7 @@ export function HomeContent() {
                     </button>
                     {current.onDecline && (
                       <button
-                        className="secondary-action"
+                        className="rounded-xl border-0 bg-[#eef2ef] px-3.5 py-2.5 font-extrabold text-[var(--green)]"
                         type="button"
                         disabled={busy}
                         onClick={() => void answerWithIntent("negative")}
@@ -486,7 +510,7 @@ export function HomeContent() {
                       </button>
                     )}
                     <button
-                      className="listen-link"
+                      className="min-h-11 border-0 bg-transparent px-3 py-2 text-[.8rem] font-bold text-[var(--green)]"
                       type="button"
                       disabled={busy}
                       onClick={() => void speak(spokenAction)}
@@ -498,22 +522,22 @@ export function HomeContent() {
                   {!current.report && artifactPanel}
                 </>
               ) : waiting ? (
-                <p className="waiting" role="status">
-                  <span className="waiting-dot" />
+                <p className="m-0 mt-3 flex flex-wrap items-center gap-2 rounded-[14px] bg-[#fff2ce] p-3 text-[.82rem] leading-[1.45] text-[#7a530a]" role="status">
+                  <span className="size-2.5 shrink-0 rounded-full bg-[#b8801a] animate-waiting-pulse motion-reduce:animate-none" />
                   {text("case.waiting")}
-                  <em>{text("case.waitingNote")}</em>
+                  <em className="w-full not-italic text-[.72rem] text-[#8a6417]">{text("case.waitingNote")}</em>
                 </p>
               ) : (
-                <p className="action-done">{text("case.allDone")}</p>
+                <p className="m-0 font-bold">{text("case.allDone")}</p>
               )}
 
               {!current && artifactPanel}
 
               {feedback && (
-                <p className="feedback" role="status">
+                <p className="m-0 mt-3 flex items-center gap-1.5 rounded-[10px] bg-[#f2f6f3] px-3 py-2.5 text-[.92rem] text-[#33413a]" role="status">
                   {feedback}
                   <button
-                    className="listen-link"
+                    className="min-h-9 border-0 bg-transparent px-2 py-1 text-[.8rem] font-bold text-[var(--green)]"
                     type="button"
                     onClick={() => void speak(feedback)}
                     aria-label={text("action.listenLabel")}
@@ -532,30 +556,30 @@ export function HomeContent() {
               )}
             </section>
 
-            <p className="eyebrow timeline-heading">{text("case.history")}</p>
-            <ol className="timeline">
+            <p className="m-0 mt-6 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("case.history")}</p>
+            <ol className="m-[22px_0px_0px] list-none p-0">
               {caseSnapshot.nodes.map((node) => {
                 const definition = workflow.nodes.find((candidate) => candidate.id === node.id);
                 if (!definition) return null;
                 const note = nodeNote(caseSnapshot, node.id);
 
                 return (
-                  <li key={node.id} className={node.state}>
-                    <span className="dot" />
-                    <details>
-                      <summary>
-                        <strong>{translate(definition.title, locale)}</strong>
-                        <small>{text(`state.${node.state}`)}</small>
+                  <li key={node.id} className={`flex gap-3 py-2.5 ${TIMELINE_TEXT_CLASS[node.state] ?? "text-[#7a827e]"}`}>
+                    <span className={`mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${TIMELINE_DOT_CLASS[node.state] ?? "border-current"}`} />
+                    <details className="min-w-0 grow shrink basis-auto">
+                      <summary className="block min-h-11 list-none py-0.5 cursor-pointer [&::-webkit-details-marker]:hidden focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[var(--marigold)]">
+                        <strong className="block">{translate(definition.title, locale)}</strong>
+                        <small className="mt-[3px] block text-[.72rem]">{text(`state.${node.state}`)}</small>
                       </summary>
-                      <p className="node-detail">
+                      <p className="m-[6px_0px_0px] text-[.86rem] leading-[1.5] text-[#536059]">
                         {translate(definition.detail, locale) !== translate(definition.title, locale)
                           ? translate(definition.detail, locale)
                           : null}
                       </p>
-                      {note && <p className="node-note">{translate(note, locale)}</p>}
+                      {note && <p className="m-[8px_0px_0px] border-l-[3px] border-[#8b2e24] bg-[#fbeceb] px-2.5 py-2 text-[.82rem] font-bold text-[#8b2e24]">{translate(note, locale)}</p>}
                       {definition.link && (
-                        <p className="node-link">
-                          <a href={definition.link.url} target="_blank" rel="noopener noreferrer">
+                        <p className="m-[6px_0px_0px]">
+                          <a className="font-bold text-[var(--green)]" href={definition.link.url} target="_blank" rel="noopener noreferrer">
                             {text("web.open")}
                           </a>
                         </p>
@@ -568,16 +592,16 @@ export function HomeContent() {
 
 
 
-            {caseId && <a className="case-card-link" href={caseCardHref(caseId)}>{text("case.openCaseCard")}</a>}
+            {caseId && <a className="mt-4 block min-h-11 rounded-[10px] bg-[var(--marigold)] p-3 text-center font-semibold text-[#2f250f] no-underline" href={caseCardHref(caseId)}>{text("case.openCaseCard")}</a>}
 
-            <button className="reset-demo" type="button" onClick={resetDemo}>
+            <button className="mt-4.5 w-full min-h-11 rounded-xl border border-[var(--line)] bg-[#eee5d8] font-extrabold text-[var(--green)]" type="button" onClick={resetDemo}>
               {text("case.startOver")}
             </button>
           </section>
 
-          {!current?.report && <form className="answer-form" onSubmit={send}>
+          {!current?.report && <form className="sticky bottom-3 flex items-end gap-2 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,.96)] p-2 shadow-[0_12px_35px_rgba(28,35,31,.14)]" onSubmit={send}>
             <button
-              className={`mic ${recording ? "recording" : ""}`}
+              className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
               type="button"
               onClick={toggleRecording}
               aria-label={recording ? text("chat.recordStop") : text("chat.recordStart")}
@@ -585,6 +609,7 @@ export function HomeContent() {
               {recording ? "■" : "●"}
             </button>
             <textarea
+              className="w-full min-w-0 resize-none border-0 bg-transparent p-2.5 outline-0 [font:inherit]"
               aria-label={text("answer.label")}
               value={answer}
               onChange={(event) => setAnswer(event.target.value)}
@@ -592,7 +617,7 @@ export function HomeContent() {
               rows={2}
               maxLength={2_000}
             />
-            <button className="send" disabled={busy || !answer.trim()} type="submit">
+            <button className="min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55" disabled={busy || !answer.trim()} type="submit">
               {text("answer.send")}
             </button>
           </form>}

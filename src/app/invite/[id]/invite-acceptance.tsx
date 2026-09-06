@@ -82,37 +82,37 @@ export function InviteAcceptance({ invitationId, signedIn }: { invitationId: str
     }
   }
 
-  if (message) return <p className="invite-success" role="status">{message}</p>;
+  if (message) return <p className="mt-6 p-3.5 rounded-xl bg-[#e8f4ee] text-[var(--green)] font-extrabold" role="status">{message}</p>;
 
   if (verificationEmail) return (
-    <div className="invite-actions">
-      {error ? <p className="admin-error" role="alert">{error}</p> : null}
-      <button className="secondary-action" type="button" onClick={retryVerification} disabled={pending}>
+    <div className="grid gap-3 mt-6">
+      {error ? <p className="m-0 mt-2 font-extrabold text-[#8b2e24]" role="alert">{error}</p> : null}
+      <button className="rounded-xl border-0 bg-[#eee5d8] px-3.5 py-2.5 font-extrabold text-[var(--green)] min-h-12" type="button" onClick={retryVerification} disabled={pending}>
         {pending ? "Sending…" : "Send verification email again"}
       </button>
     </div>
   );
 
   return signedIn ? (
-    <div className="invite-actions">
-      <button className="primary-action" type="button" onClick={accept} disabled={pending}>
+    <div className="grid gap-3 mt-6">
+      <button className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55 min-h-12" type="button" onClick={accept} disabled={pending}>
         {pending ? "Accepting…" : "Accept expert invitation"}
       </button>
-      {error ? <p className="admin-error" role="alert">{error}</p> : null}
+      {error ? <p className="m-0 mt-2 font-extrabold text-[#8b2e24]" role="alert">{error}</p> : null}
     </div>
   ) : (
     <>
-      <form className="auth-form" onSubmit={createAccount}>
-        <label htmlFor="invite-name">Name</label>
-        <input id="invite-name" name="name" autoComplete="name" required />
-        <label htmlFor="invite-email">Invited email</label>
-        <input id="invite-email" name="email" type="email" autoComplete="email" required />
-        <label htmlFor="invite-password">Create password</label>
-        <input id="invite-password" name="password" type="password" autoComplete="new-password" minLength={8} required />
-        {error ? <p className="admin-error" role="alert">{error}</p> : null}
-        <button className="primary-action" type="submit" disabled={pending}>{pending ? "Creating…" : "Create expert account"}</button>
+      <form className="grid gap-2 mt-6" onSubmit={createAccount}>
+        <label className="mt-2 text-[.82rem] font-extrabold" htmlFor="invite-name">Name</label>
+        <input className="w-full min-h-12 px-3.5 py-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)]" id="invite-name" name="name" autoComplete="name" required />
+        <label className="mt-2 text-[.82rem] font-extrabold" htmlFor="invite-email">Invited email</label>
+        <input className="w-full min-h-12 px-3.5 py-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)]" id="invite-email" name="email" type="email" autoComplete="email" required />
+        <label className="mt-2 text-[.82rem] font-extrabold" htmlFor="invite-password">Create password</label>
+        <input className="w-full min-h-12 px-3.5 py-3 rounded-xl border border-[var(--line)] bg-white text-[var(--ink)]" id="invite-password" name="password" type="password" autoComplete="new-password" minLength={8} required />
+        {error ? <p className="m-0 mt-2 font-extrabold text-[#8b2e24]" role="alert">{error}</p> : null}
+        <button className="rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-not-allowed disabled:opacity-55 min-h-12 mt-3" type="submit" disabled={pending}>{pending ? "Creating…" : "Create expert account"}</button>
       </form>
-      <p className="auth-alternate">Already have an account? <Link href={`/admin/sign-in?next=/invite/${encodeURIComponent(invitationId)}`}>Sign in</Link></p>
+      <p className="mt-5 text-[.85rem]">Already have an account? <Link className="text-[var(--green)] font-extrabold" href={`/admin/sign-in?next=/invite/${encodeURIComponent(invitationId)}`}>Sign in</Link></p>
     </>
   );
 }

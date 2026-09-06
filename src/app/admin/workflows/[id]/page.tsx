@@ -56,7 +56,7 @@ export default async function PublishedWorkflowPage({ params }: { params: Promis
       redirect(`/admin/sign-in?next=${encodeURIComponent(path)}`);
     }
     if (error instanceof Error && error.message === "ADMIN_REQUIRED") {
-      return <main className="admin-shell"><section className="auth-card"><p className="eyebrow">403 · Access denied</p><h1>Administrator access is required</h1></section></main>;
+      return <main className="mx-auto min-h-screen w-full max-w-[620px] px-[18px] pt-[18px] pb-[92px] min-[760px]:pt-[30px]"><section className="mt-[42px] rounded-[22px] border border-[var(--line)] bg-white/70 p-[clamp(20px,6vw,36px)] shadow-[0_14px_40px_rgba(52,43,27,.07)]"><p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">403 · Access denied</p><h1 className="my-2 text-[clamp(2rem,7vw,3rem)] leading-[1.05] tracking-[-.04em]">Administrator access is required</h1></section></main>;
     }
     throw error;
   }

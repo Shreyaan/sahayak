@@ -8,5 +8,5 @@ export function SignOutButton() {
     window.location.assign("/admin/sign-in");
   }
 
-  return <button className="secondary-action" type="button" onClick={signOut}>Sign out</button>;
+  return <button className="rounded-xl border-0 bg-[#eee5d8] px-3.5 py-2.5 font-extrabold text-[var(--green)]" type="button" onClick={signOut}>Sign out</button>;
 }
