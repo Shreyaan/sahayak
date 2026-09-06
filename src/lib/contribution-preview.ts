@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { jurisdictionSchema, reviewRevisionContentSchema } from "./review-case";
 
+export const MAX_PREVIEW_TOKEN_LENGTH = 512_000;
+
 const payloadSchema = z.object({
   submittedTitle: z.string().trim().min(1).max(120).optional(),
   input: z.string().trim().min(1).max(4_000),
@@ -22,7 +24,9 @@ function signature(encoded: string) {
 
 export function signContributionPreview(input: Omit<z.infer<typeof payloadSchema>, "expiresAt">) {
   const encoded = Buffer.from(JSON.stringify(payloadSchema.parse({ ...input, expiresAt: Date.now() + 10 * 60_000 }))).toString("base64url");
-  return `${encoded}.${signature(encoded)}`;
+  const token = `${encoded}.${signature(encoded)}`;
+  if (token.length > MAX_PREVIEW_TOKEN_LENGTH) throw new Error("PREVIEW_TOO_LARGE");
+  return token;
 }
 
 export function verifyContributionPreview(token: string) {

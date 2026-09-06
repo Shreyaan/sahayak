@@ -177,7 +177,7 @@ export function ArtifactDraftPanel({
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button className="min-h-11 bg-[#eee5d8] px-4 font-extrabold text-[var(--green)] hover:bg-[#e5dacb]" disabled={Boolean(busy) || saved} onClick={save} type="button">{busy === "save" ? text.saving : text.save}</Button>
-        {saved ? <Button asChild className="min-h-11 bg-[var(--green)] px-4 font-extrabold text-white hover:bg-[#245a41]"><a href={`/api/cases/${encodeURIComponent(caseId)}/artifacts/escalation-draft?locale=${locale}`}>{text.download}</a></Button>
+        {saved ? <Button asChild className="h-auto! max-w-full whitespace-normal! py-3 text-center min-h-11 bg-[var(--green)] px-4 font-extrabold text-white hover:bg-[#245a41]"><a href={`/api/cases/${encodeURIComponent(caseId)}/artifacts/escalation-draft?locale=${locale}`}>{text.download}</a></Button>
           : <span className="text-sm font-bold text-[#8b2e24]">{locale === "hi" ? "डाउनलोड से पहले बदलाव सुरक्षित करें।" : "Save changes before downloading."}</span>}
         {saved && <span className="text-sm text-[#536059]">{text.saved}</span>}
       </div>

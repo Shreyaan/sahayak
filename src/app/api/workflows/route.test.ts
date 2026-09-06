@@ -14,7 +14,7 @@ describe("/api/workflows", () => {
     const response = await GET();
     const body = await response.json();
 
-    expect(body.workflows.map((w: { id: string }) => w.id)).toEqual(["bereavement", "scholarship"]);
+    expect(body.workflows.map((w: { id: string }) => w.id)).toEqual(["aadhaar-update", "bereavement", "epfo-claim", "scholarship"]);
   });
 
   test("retires direct custom workflow submission so it cannot reach citizen discovery", async () => {

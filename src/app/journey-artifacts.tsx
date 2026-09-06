@@ -12,16 +12,16 @@ const copy = {
   en: {
     eyebrow: "Ready to use",
     heading: "Your documents",
-    intro: "Prepare or download documents as soon as this journey makes them available.",
+    intro: "Available in this case now. Review them before you use them; Sahayak does not send them anywhere.",
     download: "Download",
-    fixed: "Approved journey guidance",
+    fixed: "Workflow checklist — verify requirements with the desk",
   },
   hi: {
     eyebrow: "उपयोग के लिए तैयार",
     heading: "आपके दस्तावेज़",
-    intro: "यात्रा में उपलब्ध होते ही दस्तावेज़ तैयार करें या डाउनलोड करें।",
+    intro: "इस केस में अभी उपलब्ध। उपयोग से पहले जाँच लें; सहायक इन्हें कहीं भेजता नहीं है।",
     download: "डाउनलोड करें",
-    fixed: "स्वीकृत यात्रा मार्गदर्शन",
+    fixed: "यात्रा की सूची — आवश्यकताएँ डेस्क से जाँचें",
   },
 } as const;
 

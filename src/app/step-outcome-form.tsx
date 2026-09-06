@@ -38,9 +38,11 @@ const copy = {
   },
 } as const;
 
-export function StepOutcomeForm({ caseId, stepId, locale }: {
+export function StepOutcomeForm({ caseId, stepId, stepTitle, locale, completed }: {
   caseId: string;
   stepId: string;
+  stepTitle?: string;
+  completed: boolean;
   locale: Locale;
 }) {
   const text = copy[locale];
@@ -52,7 +54,7 @@ export function StepOutcomeForm({ caseId, stepId, locale }: {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!choice) return;
+    if (!choice || (choice === "worked" && !completed)) return;
     setPending(true);
     setMessage(undefined);
     setError(undefined);
@@ -81,8 +83,9 @@ export function StepOutcomeForm({ caseId, stepId, locale }: {
   return (
     <form className="step-outcome" onSubmit={submit}>
       <strong>{text.heading}</strong>
+      {stepTitle && <small className="-mt-1 block text-[#65716b]">{stepTitle}</small>}
       <div className="outcome-choices">
-        {(Object.keys(text.choices) as StepChoice[]).map((kind) => (
+        {(Object.keys(text.choices) as StepChoice[]).filter(kind => completed || kind !== "worked").map((kind) => (
           <button
             key={kind}
             type="button"

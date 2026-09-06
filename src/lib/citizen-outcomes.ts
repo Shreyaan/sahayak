@@ -47,7 +47,7 @@ export type RecordCitizenOutcome =
   | { kind: "worked" | "different" | "stuck" | "skipped"; stepId: string; detail?: string }
   | { kind: "resolved"; detail?: string };
 
-const reportableStates = new Set<NodeState>(["done"]);
+const reportableStates = new Set<NodeState>(["done", "blocked", "needs-you", "verifying"]);
 
 export function redactCitizenText(value: string) {
   return value
@@ -94,7 +94,7 @@ export function createCitizenOutcomeService(
       let stepId: string | null = null;
       if (input.kind !== "awareness" && input.kind !== "resolved") {
         const step = record.snapshot.nodes.find(({ id }) => id === input.stepId);
-        if (!step || !reportableStates.has(step.state)) throw new Error("STEP_NOT_REPORTABLE");
+        if (!step || !reportableStates.has(step.state) || (input.kind === "worked" && step.state !== "done")) throw new Error("STEP_NOT_REPORTABLE");
         stepId = step.id;
       }
 

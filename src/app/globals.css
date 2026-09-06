@@ -62,13 +62,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   outline-offset: 3px;
 }
 
-main {
-  width: min(100%, 520px);
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 18px 18px 92px;
-}
-
 header, .case-heading, .chat-form {
   display: flex;
   align-items: center;
@@ -248,13 +241,18 @@ header, .case-heading, .chat-form {
 
 footer { padding-top: 24px; color: #505a54; font-size: .7rem; text-align: center; }
 
-@media (min-width: 760px) {
-  main { padding-top: 30px; }
-}
-
 /* Protected administrator and invitation surfaces. */
-.admin-shell { width: min(100%, 620px); }
+.admin-shell {
+  width: min(100%, 620px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 18px 18px 92px;
+}
 .admin-shell-wide { width: min(100%, 880px); }
+
+@media (min-width: 760px) {
+  .admin-shell { padding-top: 30px; }
+}
 .admin-brand { display: inline-block; color: var(--ink); text-decoration: none; }
 .admin-nav { margin-bottom: 32px; }
 .auth-card, .admin-access, .admin-section, .admin-invite {

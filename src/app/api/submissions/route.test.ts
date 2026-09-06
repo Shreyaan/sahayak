@@ -31,6 +31,14 @@ const draft = {
 };
 
 describe("/api/submissions", () => {
+  test("confirms a full bilingual preview larger than the former token limit", async () => {
+    const previewToken = signContributionPreview({ input: "SYNTHETIC full scholarship review", jurisdiction: { scope: "central" }, draft: {
+      workflowId: "scholarship", definition: structuredClone(workflows.scholarship), title: draft.title, summary: draft.summary, steps: draft.steps, matches: [], additions: [], conflicts: [], sourceType: "lived experience",
+    } });
+    expect(previewToken.length).toBeGreaterThan(20_000);
+    const response = await POST(postRequest({ confirmed: true, previewToken }));
+    expect(response.status).toBe(201);
+  });
   test("creates a confirmed review case and returns its exact protected link", async () => {
     const response = await POST(postRequest({
       confirmed: true,

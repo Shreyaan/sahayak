@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { FormEvent, useRef, useState } from "react";
 import type { Locale } from "@/lib/locale";
 import type { SearchWorkflowsResponse } from "@/lib/search/search-workflows";
+import { isSyntheticSeed } from "@/lib/workflow";
 import { formatJurisdiction } from "@/lib/trust";
 import { TrustDisclosure } from "./trust-disclosure";
 
@@ -23,6 +24,8 @@ const copy = {
     start: "Start this journey",
     searching: "Looking for a safe match…",
     error: "Search is unavailable right now. Your description is still here.",
+    unsupported: "We do not have a supported journey for this problem yet.",
+    unsupportedHelp: "Your description is still here. Browse the published journeys below or use Contribute to propose an experience for review. No case has been started.",
   },
   hi: {
     label: "अपनी समस्या बताइए",
@@ -37,14 +40,16 @@ const copy = {
     start: "यह यात्रा शुरू करें",
     searching: "सही यात्रा खोज रहे हैं…",
     error: "अभी खोज उपलब्ध नहीं है। आपकी लिखी समस्या यहीं सुरक्षित है।",
+    unsupported: "इस समस्या के लिए अभी समर्थित यात्रा उपलब्ध नहीं है।",
+    unsupportedHelp: "आपका विवरण यहीं है। नीचे प्रकाशित यात्राएँ देखें या योगदान से अपना अनुभव समीक्षा के लिए दें। कोई केस शुरू नहीं हुआ है।",
   },
 } as const;
 
-async function requestSearch(query: string, locale: Locale, stateCode?: string, districtCode?: string): Promise<SearchWorkflowsResponse> {
+async function requestSearch(query: string, locale: Locale, stateCode?: string, districtCode?: string, clarificationAttempt = 0): Promise<SearchWorkflowsResponse> {
   const response = await fetch("/api/search", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query, locale, stateCode, districtCode, limit: 3 }),
+    body: JSON.stringify({ query, locale, stateCode, districtCode, limit: 3, clarificationAttempt }),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(body.code ?? "SEARCH_UNAVAILABLE");
@@ -69,9 +74,11 @@ export function CitizenDiscovery({
   const [response, setResponse] = useState<SearchWorkflowsResponse>();
   const [startingVersionId, setStartingVersionId] = useState<string>();
   const starting = useRef(false);
+  const searchRevision = useRef(0);
   const search = useMutation({
-    mutationFn: (query: string) => requestSearch(query, locale, stateCode, districtCode),
-    onSuccess: (next) => {
+    mutationFn: ({ query, clarificationAttempt }: { query: string; clarificationAttempt: number; revision: number }) => requestSearch(query, locale, stateCode, districtCode, clarificationAttempt),
+    onSuccess: (next, input) => {
+      if (input.revision !== searchRevision.current) return;
       setResponse(next);
       if (next.shouldClarify) setMode("chat");
     },
@@ -80,7 +87,7 @@ export function CitizenDiscovery({
   function submit(event: FormEvent) {
     event.preventDefault();
     const query = [problem.trim(), answer.trim()].filter(Boolean).join(". ");
-    if (query.length >= 2) search.mutate(query);
+    if (query.length >= 2) search.mutate({ query, clarificationAttempt: answer.trim() ? 1 : 0, revision: searchRevision.current });
   }
 
   async function startResult(workflowVersionId: string) {
@@ -112,7 +119,7 @@ export function CitizenDiscovery({
           className="min-h-[76px] w-full resize-y rounded-2xl border border-[var(--line)] bg-white p-3.5 leading-normal text-[var(--ink)]"
           id="citizen-problem"
           value={problem}
-          onChange={(event) => setProblem(event.target.value)}
+          onChange={(event) => { setProblem(event.target.value); setAnswer(""); setResponse(undefined); searchRevision.current += 1; }}
           placeholder={text.placeholder}
           rows={2}
           maxLength={500}
@@ -140,6 +147,8 @@ export function CitizenDiscovery({
 
       {search.isError && <p className="m-0 font-bold text-[#8b2e24]" role="alert">{text.error}</p>}
 
+      {response?.unsupported && <div className="rounded-xl border border-[var(--line)] bg-[#fff8e8] p-4" role="status"><p className="m-0 font-extrabold">{text.unsupported}</p><p className="mb-0 mt-2 text-sm leading-relaxed">{text.unsupportedHelp}</p></div>}
+
       {response && !response.shouldClarify && response.results.length > 0 && (
         <div className="grid gap-3">
           <h2 className="mt-1 text-lg font-bold" id="discovery-heading">{text.resultHeading}</h2>
@@ -148,7 +157,7 @@ export function CitizenDiscovery({
               <strong className="text-lg">{result.title}</strong>
               <small className="text-[#7a827e]">{result.summary}</small>
               <span className="mt-1 w-fit rounded-full bg-[#e8f4ee] px-2 py-1 text-xs font-extrabold text-[var(--green)]">{formatJurisdiction(result.jurisdiction, locale)}</span>
-              {(result.workflowId === "scholarship" || result.workflowId === "bereavement") && <span className="w-fit rounded-full bg-[#fff1cf] px-2 py-1 text-xs font-extrabold text-[#79540d]">{locale === "hi" ? "कृत्रिम उदाहरण यात्रा" : "Synthetic example journey"}</span>}
+              {isSyntheticSeed(result.workflowId) && <span className="w-fit rounded-full bg-[#fff1cf] px-2 py-1 text-xs font-extrabold text-[#79540d]">{locale === "hi" ? "कृत्रिम उदाहरण यात्रा" : "Synthetic example journey"}</span>}
               <ul className="mt-1 list-disc pl-4 text-sm text-[#536059]">{result.matchReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
               <button className="mt-2 min-h-11 rounded-xl bg-[var(--marigold)] font-extrabold text-[#2f250f] disabled:opacity-50" type="button" disabled={starting.current} onClick={() => void startResult(result.workflowVersionId)}>
                 {startingVersionId === result.workflowVersionId ? text.searching : text.start}

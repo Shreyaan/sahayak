@@ -18,15 +18,17 @@ export async function POST(request: Request) {
   try {
     const result = await searchWorkflows(parsed.data);
     if (!result.shouldClarify) return NextResponse.json(result);
+    if (parsed.data.clarificationAttempt >= 1) {
+      return NextResponse.json({ results: [], needsLocation: false, shouldClarify: false, unsupported: true });
+    }
 
     let clarificationQuestion: string;
     try {
       clarificationQuestion = await clarifySearch({ query: parsed.data.query, locale: parsed.data.locale });
     } catch {
-      return NextResponse.json({
-        code: "CLARIFICATION_UNAVAILABLE",
-        error: "Chat clarification is unavailable right now.",
-      }, { status: 503 });
+      clarificationQuestion = parsed.data.locale === "hi"
+        ? "यह किस योजना, पोर्टल या सरकारी काम से जुड़ा है? केवल नाम बताएँ, निजी नंबर नहीं।"
+        : "Which scheme, portal or government task is this about? Give its name, not personal numbers.";
     }
     return NextResponse.json({ ...result, clarificationQuestion });
   } catch {

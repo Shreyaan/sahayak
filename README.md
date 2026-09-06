@@ -1,149 +1,95 @@
-# Sahayak — सरकारी काम, एक बात-चीत।
+# Sahayak — सरकारी काम, एक बात-चीत
 
-A Hindi-first, mobile-first AI helper that turns a life event into one guided
-government-work case: what happens next, whether an office visit is needed,
-what to carry, what to say, and how to recover from delay or rejection.
+Sahayak helps a citizen connect a portal status to their next real action: where
+to ask, what to keep ready, what to say, and what evidence to bring back. The
+flagship problem is an NSP scholarship shown as released but not credited.
 
-**This is an independent hackathon prototype. It is not affiliated with any
-government body. Every desk, bank, payment, rejection, and record in it is
-simulated, and all data is synthetic.**
+**Independent hackathon prototype; not a government service. Use fictional
+information in the demonstration workflows.** Sahayak does not contact a portal,
+file a grievance, change identity records, or verify a bank credit. Updates are
+explicitly reported by the citizen.
 
-## The idea
+## Run locally
 
-The language model is the clerk: it listens, interprets, and explains. It never
-decides policy. A deterministic workflow engine decides what is true and what
-is allowed, and the citizen always sees exactly what happened and what comes
-next.
+Use Bun and a reachable PostgreSQL database with the extensions required by the
+Drizzle migrations (including pgvector). Keep local credentials in the ignored
+`.env.local` file. Required configuration names:
 
-```
-citizen speaks  →  Deepgram STT  →  AI clerk (OpenRouter)
-                                      ↓ calls a tool
-                          deterministic workflow engine   ← the only authority
-                                      ↓
-                     case state + grounded Hindi reply  →  ElevenLabs TTS
-```
+- `DATABASE_URL`
+- `BETTER_AUTH_SECRET` — a strong random secret, not the library default
+- `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` — the application's actual origin
 
-## Running it
+Optional providers: `OPENROUTER_API_KEY` / `AI_MODEL` for AI drafting and
+clarification, `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` for speech. Email
+invitations also require the configured mail provider. Never commit keys.
 
-```bash
+```sh
 bun install
-bun dev            # http://localhost:3000
+bun run db:migrate
+bun run db:seed
+bun run dev
 ```
 
-Create `.env.local` (never committed):
+The current local development database is `postgresql:///sahayak_test`; use a
+separate database for a public deployment. Seeding adds immutable synthetic
+versions and never rewrites existing versions or citizen cases. To populate
+optional semantic embeddings, run `bun run db:embed` with its provider configured.
+Without embeddings, PostgreSQL lexical/trigram retrieval remains available.
 
-```
-OPENROUTER_API_KEY=...
-AI_MODEL=openai/gpt-5.6-luna
-DEEPGRAM_API_KEY=...
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
-```
-
-Every key is optional. With none configured the app still runs the complete
-deterministic demo: the workflow engine, both journeys, artifacts, and the Case
-Card all work without a provider. Speech and AI phrasing simply switch off, and
-the routes report that they are not configured.
-
-## Deploying
-
-Deploys to Railway from this repo with no database — the app is stateless. Case
-state lives in the client and travels in the Case Card link; the rate limiter
-and the corroboration ledger are in-memory and reset on redeploy.
-
-`railway.json` pins the build and start commands. Set the environment variables
-above in the Railway service; with none set, the deterministic demo still runs
-end to end.
-
-## Verifying
-
-```bash
+```sh
 bun test
 bun run typecheck
+git diff --check
 bun run build
+bun run start
 ```
 
-## What is here
+Tests use `test/setup.ts` and a PostgreSQL database. Some integration tests add
+synthetic published fixtures. Do not run the test suite against a production
+database. Keep the existing development server off the port used by `start`.
 
-| Route | What it is |
-| --- | --- |
-| `/` | Citizen journeys and contributor mode |
-| `/case-card` | Printable one-page Case Card and artifact viewer |
-| `/honesty` | What is real versus what is simulated |
-| `/api/chat` | Deterministic transition + grounded AI reply |
-| `/api/transcribe` | Deepgram Nova-3 multilingual speech-to-text |
-| `/api/speak` | ElevenLabs Flash v2.5 speech |
-| `/api/contribute` | Compiles a contribution into a reviewable draft |
+Stop `next dev` before running `bun run build`: both use the same `.next`
+directory, and building underneath a live dev server wedges it so that every
+request hangs until the process is killed and restarted.
 
-## One engine, two journeys
+## Four demonstrations, one engine
 
-`src/lib/workflow.ts` holds a reusable typed step library and two seeded
-journeys. A workflow node names a step type and supplies its own content, so
-both journeys run on the same engine and share step types
-(`document-explain`, `desk-verification`, `case-complete`, and the escalation
-family). `/honesty` shows the shared types as the composition proof.
+- **Scholarship:** understand PFMS, collect an actual response, prepare a bank
+  visit, record a setback, prepare an AI grievance and separately record its
+  submission and payment confirmation.
+- **Aadhaar update:** check an update, understand a rejection through UIDAI
+  support, return after another setback and confirm the actual corrected result.
+- **Own EPFO withdrawal claim:** trace pending/rejected payment, prepare an
+  EPFiGMS request, retain its registration, follow up and confirm actual credit.
+- **Bereavement:** secondary synthetic stress test; not the demo centerpiece.
 
-**Bereavement claim** — Form 4 explained, a `Shyam Sunder` / `Shyam Sundar`
-mismatch, a generated correction declaration, one simulated bank rejection and
-recovery, one simulated SLA breach on the EPFO claim, and a queued RTI draft.
+New citizen cases start the exact version returned by published discovery.
+Search does not start a case for an unsupported problem. Citizens can save their
+current preparation as a small text file for offline use, and return in the same
+browser to record a response. The browser-private Case Card keeps references,
+history and separately recorded outcome evidence. A private case URL alone does
+not grant another browser access.
 
-**Stuck NSP scholarship** — `Released to PFMS` with no credit, a simulated
-hidden NPCI bounce, a bank-seeding fix, one simulated SLA breach, and a queued
-grievance.
+Both interface and workflow content are bilingual. Native radio choices wrap on
+phones. Text and deterministic actions work without speech or an AI call. AI
+artifact generation remains an optional provider dependency; fixed checklists
+and next-step downloads do not use it.
 
-Demo mode is deterministic: the same journey always produces the same rejection
-and the same breach. Simulated time is advanced by an explicit control.
+## Architecture and limits
 
-## Languages
+Next.js / React, PostgreSQL, Drizzle, Zod, Better Auth and one deterministic
+workflow engine. Search, Chat, MCP and reviewer comparison share
+`searchWorkflows`. AI interprets language and drafts reviewable text; it does not
+approve guidance or decide transitions. Atomic progress writes reject stale
+updates rather than acknowledge overwritten evidence. Artifact writes preserve
+concurrent case progress.
 
-The whole product runs in Hindi or English — not just the interface, but the
-workflow content, the generated artifacts, the Case Card, and the spoken
-replies. `next-intl` handles interface strings; workflow and artifact content
-is `Localized` data carried in the seed itself, so one engine still drives both
-journeys in both languages.
+Contributor confirmation creates an unpublished, redacted Review Case. Protected
+expert access, comparison and wording review are implemented. **Do not describe
+two-expert decisions, transactional publication or background publishing workers
+as a completed live loop:** they remain outside the verified citizen demo.
+The catalogue's synthetic seeds are not proof of independent expert approval or
+real-world outcomes. Each seed exposes its source and verification limits.
 
-A first visit picks the language from the browser's `Accept-Language` header,
-and a switcher in the header overrides it at any time. The choice is kept in a
-cookie rather than the URL, so shared Case Card links keep working.
-
-Speech follows the language rather than being fixed to Hindi:
-
-- **Speech to text** — Hindi uses Deepgram's multilingual Nova-3, because Hindi
-  speakers code-switch into English constantly. English pins `en`, which is more
-  accurate than asking the multilingual model to guess.
-- **Text to speech** — ElevenLabs receives a `language_code`, which enforces the
-  language for the model and its text normalisation.
-- **The clerk** is told which language the citizen is speaking and is given the
-  question in that language, so it interprets free-form replies in either.
-
-A test walks both workflow seeds and every artifact recursively and fails if any
-string is missing a language, so a half-translated screen cannot ship.
-
-## How the model is kept honest
-
-- The engine resolves the transition **before** the model is called, and the
-  HTTP response always carries the engine's reply and snapshot. Model prose is
-  never authoritative and can never claim a transition that did not happen.
-- A case snapshot carries only node ids and states. All step content is read
-  from the bundled seed on the server, so a client cannot introduce a step,
-  office, fee, or requirement that the workflow never had.
-- Contributions are compiled deterministically. The model may improve the
-  title and steps; matches, conflicts, corroboration, source type, and status
-  stay server-derived, and server additions are merged rather than replaced.
-
-## Contributor mode
-
-A contributor describes a synthetic lived experience. It is compiled against
-the bundled seeds into a draft showing matched steps, possible additions,
-conflicts, source type, and corroboration count. Contributors reporting the
-same steps corroborate each other; a draft becomes a *publishable draft* only
-once corroborated and free of unresolved conflicts. Publication is simulated —
-a contribution never becomes official guidance here.
-
-## Boundaries
-
-No live government integrations, scraping, real credentials, payments, OTPs,
-Aadhaar or PAN details, or personal data. Artifacts are demonstration drafts
-populated only with synthetic information. Escalations are drafted and queued,
-and the citizen approves anything that would be sent outside the prototype. The
-RTI 48-hour life-or-liberty period is not applied to ordinary delay.
+Deployment and submission: see
+[the submission pack](docs/submission/2026-09-06-demo-and-submission.md).

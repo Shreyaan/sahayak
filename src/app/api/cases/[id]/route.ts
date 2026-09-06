@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { existingBrowserOwnerHash } from "@/lib/browser-owner";
 import { store } from "@/lib/store";
+import { buildActionBrief } from "@/lib/action-brief";
+import { workflowDefinitionSchema } from "@/lib/workflow";
 import { getWorkflowVersion } from "@/lib/workflow-version";
 
 type Context = { params: Promise<{ id: string }> };
@@ -25,6 +27,21 @@ export async function GET(request: Request, context: Context) {
     const version = await getWorkflowVersion(savedCase.snapshot.workflowVersionId);
     if (!version || version.workflowId !== savedCase.snapshot.workflowId) {
       return NextResponse.json({ code: "WORKFLOW_VERSION_NOT_FOUND", error: "This case's workflow version is unavailable." }, { status: 409 });
+    }
+
+    const query = new URL(request.url).searchParams;
+    if (query.get("download") === "next-step") {
+      const locale = z.enum(["en", "hi"]).safeParse(query.get("locale") ?? "en");
+      if (!locale.success) return NextResponse.json({ code: "INVALID_LOCALE", error: "Choose English or Hindi." }, { status: 400 });
+      const definition = workflowDefinitionSchema.parse(version.definition);
+      return new Response(buildActionBrief(savedCase.snapshot, definition, version.trust, locale.data), {
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "content-disposition": `attachment; filename="sahayak-next-step-${locale.data}.txt"`,
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
     }
 
     return NextResponse.json({ case: savedCase, definition: version.definition, trust: version.trust, jurisdiction: { scope: version.scope, stateCode: version.stateCode, districtCode: version.districtCode } });

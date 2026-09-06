@@ -16,6 +16,7 @@ describe("StepOutcomeForm", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     render(<StepOutcomeForm
       caseId="11111111-1111-4111-8111-111111111111"
+      completed={true}
       stepId="check-pfms"
       locale="en"
     />);
@@ -64,4 +65,15 @@ describe("StepOutcomeForm", () => {
       }),
     );
   });
+});
+
+test('an incomplete or reopened step cannot be reported as worked', () => {
+  render(<StepOutcomeForm caseId="11111111-1111-4111-8111-111111111111" stepId="aadhaar-help" locale="en" completed={false} />);
+  expect(screen.queryByRole('button', { name: 'Worked as shown' }) === null).toBe(true);
+  expect(screen.getByRole('button', { name: 'I got stuck' }) !== null).toBe(true);
+});
+
+test('feedback names the step it rates, which is not the action shown above it', () => {
+  render(<StepOutcomeForm caseId="11111111-1111-4111-8111-111111111111" stepId="pfms-trace" stepTitle="PFMS payment check" locale="en" completed={false} />);
+  expect(screen.getByText('PFMS payment check') !== null).toBe(true);
 });

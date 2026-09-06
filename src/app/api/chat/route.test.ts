@@ -29,6 +29,18 @@ function ownedChatRequest(body: unknown, token: string) {
 const bereavement = startCase("bereavement");
 
 describe("POST /api/chat", () => {
+  test("a stale confirmation cannot answer the next step in another tab", async () => {
+    resetMemoryStore();
+    const token = crypto.randomUUID();
+    const owner = browserOwner(ownedChatRequest({}, token));
+    const fresh = startCase("bereavement");
+    const advanced = applyCitizenReply(fresh, "yes").caseSnapshot;
+    await store.saveCase("stale-tab-case", advanced, owner.hash);
+    const response = await POST(ownedChatRequest({ caseId: "stale-tab-case", caseSnapshot: fresh, intent: "affirmative" }, token));
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CASE_CONFLICT");
+    expect((await store.getCase("stale-tab-case", owner.hash))?.snapshot).toEqual(advanced);
+  });
   test("uses the deterministic path when OpenRouter is not configured", async () => {
     delete process.env.OPENROUTER_API_KEY;
 

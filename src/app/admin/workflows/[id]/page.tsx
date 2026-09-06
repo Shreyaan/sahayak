@@ -68,7 +68,7 @@ export default async function PublishedWorkflowPage({ params }: { params: Promis
     ? "Central"
     : [workflow.districtCode, workflow.stateCode].filter(Boolean).join(", ");
 
-  return <main className="mx-auto min-h-screen w-full! max-w-5xl px-5 py-8">
+  return <main className="mx-auto min-h-screen w-full max-w-5xl px-5 py-8">
     <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
       <Link className="text-xl font-extrabold text-[var(--ink)] no-underline" href="/">Sahayak <span className="text-sm text-[var(--green)]">सहायक</span></Link>
       <nav className="flex gap-5 text-sm font-bold text-[var(--green)]"><Link href="/admin/access">Dashboard</Link><Link href="/admin/reviews">Review queue</Link></nav>

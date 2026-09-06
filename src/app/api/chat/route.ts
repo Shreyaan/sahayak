@@ -183,6 +183,10 @@ export async function POST(request: Request) {
   const localize = ({ caseSnapshot: next, reply }: { caseSnapshot: CaseSnapshot; reply: Localized }) =>
     ({ caseSnapshot: next, reply: t(reply, locale) });
 
+  if (caseId && currentNode(caseSnapshot)?.id !== currentNode(submittedSnapshot)?.id) {
+    return NextResponse.json({ code: "CASE_CONFLICT", error: "The current action changed in another request. Your entry was not saved." }, { status: 409 });
+  }
+
   if (action === "record-desk-response") {
     if (!caseId || !deskResponse) {
       return NextResponse.json({ code: "CASE_REQUIRED", error: "A saved case is required to record a response." }, { status: 400 });
@@ -199,8 +203,11 @@ export async function POST(request: Request) {
     }
 
     try {
-      await store.saveCaseProgress(caseId, result.caseSnapshot, caseOwnerHash);
-    } catch {
+      await store.saveCaseProgress(caseId, result.caseSnapshot, caseOwnerHash, caseSnapshot);
+    } catch (error) {
+      if (error instanceof Error && error.message === "CASE_CONFLICT") {
+        return NextResponse.json({ code: "CASE_CONFLICT", error: "This case changed in another request. Your response was not saved. Reload the case before trying again." }, { status: 409 });
+      }
       return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The response could not be saved. Please try again." }, { status: 503 });
     }
     return NextResponse.json(result);
@@ -232,8 +239,11 @@ export async function POST(request: Request) {
   // Persist the case so the citizen can come back to exactly this state.
   if (caseId) {
     try {
-      await store.saveCaseProgress(caseId, result.caseSnapshot, caseOwnerHash);
-    } catch {
+      await store.saveCaseProgress(caseId, result.caseSnapshot, caseOwnerHash, caseSnapshot);
+    } catch (error) {
+      if (error instanceof Error && error.message === "CASE_CONFLICT") {
+        return NextResponse.json({ code: "CASE_CONFLICT", error: "This case changed in another request. Your action was not saved. Reload the case before trying again." }, { status: 409 });
+      }
       return NextResponse.json({ code: "CASE_SAVE_FAILED", error: "The case could not be saved. Please try again." }, { status: 503 });
     }
   }

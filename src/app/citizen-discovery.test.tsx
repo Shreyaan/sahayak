@@ -43,6 +43,25 @@ function safeResult() {
 }
 
 describe("CitizenDiscovery", () => {
+  test("a changed problem cannot start the previous search result", async () => {
+    globalThis.fetch = mock(() => Promise.resolve(safeResult())) as unknown as typeof fetch;
+    renderDiscovery();
+    const problem = screen.getByRole("textbox", { name: "Describe your problem" });
+    fireEvent.change(problem, { target: { value: "scholarship payment stuck" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search journeys" }));
+    await screen.findByRole("button", { name: "Start this journey" });
+    fireEvent.change(problem, { target: { value: "driving licence renewal" } });
+    expect(screen.queryByRole("button", { name: "Start this journey" }) === null).toBe(true);
+  });
+
+  test("shows an honest stop when no supported journey exists", async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ results: [], shouldClarify: false, unsupported: true })))) as unknown as typeof fetch;
+    renderDiscovery();
+    fireEvent.change(screen.getByRole("textbox", { name: "Describe your problem" }), { target: { value: "driving licence renewal" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search journeys" }));
+    await screen.findByText("We do not have a supported journey for this problem yet.");
+    expect(screen.queryByRole("button", { name: "Start this journey" }) === null).toBe(true);
+  });
   test("manual Search and Chat switching preserves the problem input", () => {
     renderDiscovery();
 

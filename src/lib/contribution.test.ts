@@ -37,8 +37,8 @@ describe("compileContribution", () => {
     );
 
     expect(draft.workflowId).toBe("scholarship");
-    expect(read(draft.matches, "hi")).toContain("बैंक खाता सीडिंग");
-    expect(read(draft.matches, "en")).toContain("Fix the bank account seeding");
+    expect(read(draft.matches, "hi")).toContain("बैंक से सीडिंग जाँच");
+    expect(read(draft.matches, "en")).toContain("Request a bank seeding check");
   });
 
   test("flags a submitted Shyam Sundar spelling against the bundled seed", () => {

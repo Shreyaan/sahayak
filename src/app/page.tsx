@@ -50,7 +50,6 @@ function VisitCard({ node, locale }: { node: WorkflowDefinition["nodes"][number]
       <p>{translate(node.visit.collect, locale)}</p>
       <p className="visit-warning">
         {text("visit.warning")}
-        <em>{text("visit.warningNote")}</em>
       </p>
     </div>
   );
@@ -68,11 +67,14 @@ export function HomeContent() {
   const [caseId, setCaseId] = useState<string | null>(null);
   const [caseSnapshot, setCaseSnapshot] = useState<CaseSnapshot | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [responseEntryStepId, setResponseEntryStepId] = useState<string>();
+  const [briefPending, setBriefPending] = useState(false);
   const [reportStepId, setReportStepId] = useState<string>();
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [resumeAttempt, setResumeAttempt] = useState(0);
+  const actionHeading = useRef<HTMLHeadingElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
   const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -160,7 +162,15 @@ export function HomeContent() {
         body: JSON.stringify({ ...body, locale, caseSnapshot, ...(caseId ? { caseId } : {}) }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Request failed");
+      if (!response.ok) {
+        if (result.code === "CASE_CONFLICT") {
+          setFeedback(locale === "hi"
+            ? "केस दूसरी जगह बदल गया। आपकी लिखी बात अभी यहाँ है, लेकिन सुरक्षित नहीं हुई। इसे कॉपी करें और Case Card से नया कदम खोलें।"
+            : "This case changed in another request. Your entry is still here, but was not saved. Copy it before opening the latest action from the Case Card.");
+          return false;
+        }
+        throw new Error(result.error || "Request failed");
+      }
 
       setCaseSnapshot(result.caseSnapshot);
       setFeedback(transitionFeedback(result.reply, actedStepId, result.caseSnapshot));
@@ -186,8 +196,7 @@ export function HomeContent() {
     const value = answer.trim();
     if (!value) return;
 
-    setAnswer("");
-    void ask({ action: "reply", message: value });
+    void ask({ action: "reply", message: value }).then((saved) => { if (saved) setAnswer(""); });
   }
 
   /** Opens a case, whether it came from the server or locally. */
@@ -229,6 +238,7 @@ export function HomeContent() {
 
   function resetDemo() {
     stopActiveRecording(true);
+    setContributorMode(false);
     setCaseSnapshot(null);
     setCaseId(null);
     void setActiveCaseId(null);
@@ -311,6 +321,25 @@ export function HomeContent() {
     }
   }
 
+  async function downloadNextStep() {
+    if (!caseId || briefPending) return;
+    setBriefPending(true);
+    try {
+      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}?download=next-step&locale=${locale}`);
+      if (!response.ok) throw new Error("BRIEF_UNAVAILABLE");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sahayak-next-step-${locale}.txt`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch {
+      setFeedback(locale === "hi" ? "अभी सूची डाउनलोड नहीं हुई। तैयारी नीचे मौजूद है; फिर कोशिश करें।" : "The checklist could not be downloaded. Your preparation is still below; try again.");
+    } finally {
+      setBriefPending(false);
+    }
+  }
+
   function toggleContributorMode() {
     if (!contributorMode) stopActiveRecording(true);
     setContributorMode((current) => !current);
@@ -319,6 +348,15 @@ export function HomeContent() {
   const workflow = caseSnapshot && getCaseWorkflowDefinition(caseSnapshot);
   const openNode = caseSnapshot?.nodes.find((node) => node.state === "needs-you");
   const current = workflow && openNode ? workflow.nodes.find((node) => node.id === openNode.id) : undefined;
+  useEffect(() => {
+    if (!current) return;
+    actionHeading.current?.focus({ preventScroll: true });
+    actionHeading.current?.scrollIntoView?.({ block: "start" });
+  }, [current?.id, caseId]);
+  /** The feedback form rates the step just acted on, which is not the step now shown above it. */
+  const reportStepTitle = workflow && reportStepId
+    ? (() => { const node = workflow.nodes.find((item) => item.id === reportStepId); return node ? translate(node.title, locale) : undefined; })()
+    : undefined;
   const waiting = caseSnapshot?.nodes.some((node) => node.state === "verifying") ?? false;
   const resolved = caseSnapshot?.nodes.some((node) => node.id === "case-done" && node.state === "done") ?? false;
   const confirmText = current
@@ -342,10 +380,30 @@ export function HomeContent() {
       ].filter(Boolean).join(". ")
     : "";
 
+  const artifactPanel = caseId && caseSnapshot && caseSnapshot.artifacts.length > 0 ? (
+    <JourneyArtifacts
+      caseId={caseId}
+      locale={locale}
+      snapshot={caseSnapshot}
+      onDraftChange={(draft) => setCaseSnapshot((currentSnapshot) => currentSnapshot ? {
+        ...currentSnapshot,
+        artifactDrafts: { ...currentSnapshot.artifactDrafts, "escalation-draft": draft },
+      } : currentSnapshot)}
+    />
+  ) : null;
+
   return (
-    <main className={!caseSnapshot ? "!w-full max-w-[1180px]" : undefined}>
+    <main className={`mx-auto min-h-screen w-full px-[18px] pt-[18px] pb-[92px] min-[760px]:pt-[30px] ${contributorMode || !caseSnapshot ? "max-w-[1180px]" : "max-w-[520px]"}`}>
       <header>
-        <div className="brand">{common("brand")}</div>
+        <button
+          className="brand cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--ink)]"
+          type="button"
+          onClick={resetDemo}
+          title={text("case.startOver")}
+          aria-label={`${common("brand")} — ${text("case.startOver")}`}
+        >
+          {common("brand")}
+        </button>
         <div className="header-actions">
           <LanguageSwitcher />
           <button
@@ -380,19 +438,29 @@ export function HomeContent() {
               {current ? (
                 <>
                   <p className="eyebrow">{text("action.eyebrow")}</p>
-                  <h2>{actionTitle}</h2>
+                  <h2 ref={actionHeading} tabIndex={-1} className="scroll-mt-5 outline-none">{actionTitle}</h2>
                   {showDetail && <p className="action-detail">{actionDetail}</p>}
                   <p className="action-question">{actionAsk}</p>
                   {current.link && (
                     <p className="action-link">
                       <a href={current.link.url} target="_blank" rel="noopener noreferrer">
-                        🔗 {text("web.open")}
+                        🔗 {translate(current.link.action, locale)}
                       </a>
                       <small>{translate(current.link.collect, locale)}</small>
                     </p>
                   )}
+                  <div className="my-4 flex flex-wrap items-center gap-3 text-sm">
+                    <button type="button" className="min-h-11 rounded-xl border border-[var(--green)] px-4 py-2 font-bold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void downloadNextStep()}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "अगला कदम ऑफ़लाइन रखने के लिए डाउनलोड करें" : "Save next step for offline use")}</button>
+                    {caseId && <a className="font-bold text-[var(--green)] underline" href={caseCardHref(caseId)}>{locale === "hi" ? "मेरी तैयारी और रिकॉर्ड" : "My preparation and record"}</a>}
+                  </div>
                   <VisitCard node={current} locale={locale} />
-                  {current.report ? <DeskResponseForm
+                  {current.report && artifactPanel}
+                  {current.report ? responseEntryStepId !== current.id ? (
+                    <div className="mt-5 rounded-xl border border-[var(--line)] bg-[#f6f3eb] p-4">
+                      <p className="m-0 text-sm leading-relaxed">{locale === "hi" ? "अभी जवाब नहीं मिला? पहले ऊपर की तैयारी का उपयोग करें। इसी ब्राउज़र में लौटकर यह कदम जारी रख सकते हैं।" : "No response yet? Use the preparation above first. You can return to this step in the same browser."}</p>
+                      <button type="button" className="primary-action mt-3" onClick={() => setResponseEntryStepId(current.id)}>{locale === "hi" ? "मेरे पास दर्ज करने के लिए जवाब है" : "I have a response to record"}</button>
+                    </div>
+                  ) : <DeskResponseForm
                     busy={busy}
                     key={current.id}
                     locale={locale}
@@ -427,6 +495,7 @@ export function HomeContent() {
                       🔊 {text("action.listen")}
                     </button>
                   </div>}
+                  {!current.report && artifactPanel}
                 </>
               ) : waiting ? (
                 <p className="waiting" role="status">
@@ -437,6 +506,8 @@ export function HomeContent() {
               ) : (
                 <p className="action-done">{text("case.allDone")}</p>
               )}
+
+              {!current && artifactPanel}
 
               {feedback && (
                 <p className="feedback" role="status">
@@ -452,8 +523,8 @@ export function HomeContent() {
                 </p>
               )}
 
-              {caseId && reportStepId && !current?.report && (
-                <StepOutcomeForm caseId={caseId} stepId={reportStepId} locale={locale} />
+              {caseId && reportStepId && (
+                <StepOutcomeForm key={`${reportStepId}-${caseSnapshot.nodes.find(node => node.id === reportStepId)?.state}`} completed={caseSnapshot.nodes.find(node => node.id === reportStepId)?.state === "done"} caseId={caseId} stepId={reportStepId} stepTitle={reportStepTitle} locale={locale} />
               )}
 
               {caseId && resolved && (
@@ -495,17 +566,7 @@ export function HomeContent() {
               })}
             </ol>
 
-            {caseId && caseSnapshot.artifacts.length > 0 && (
-              <JourneyArtifacts
-                caseId={caseId}
-                locale={locale}
-                snapshot={caseSnapshot}
-                onDraftChange={(draft) => setCaseSnapshot((currentSnapshot) => currentSnapshot ? {
-                  ...currentSnapshot,
-                  artifactDrafts: { ...currentSnapshot.artifactDrafts, "escalation-draft": draft },
-                } : currentSnapshot)}
-              />
-            )}
+
 
             {caseId && <a className="case-card-link" href={caseCardHref(caseId)}>{text("case.openCaseCard")}</a>}
 

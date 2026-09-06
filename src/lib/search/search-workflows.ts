@@ -5,12 +5,14 @@ import { searchDocumentsTable, workflowVersionsTable } from "@/db/schema";
 import { rankCandidates, type CandidateEvidence } from "./ranking";
 import { embedSearchQuery } from "./embeddings";
 import { parseTrustMetadata, type TrustMetadata, type WorkflowJurisdiction } from "@/lib/trust";
+import { redactCitizenText } from "@/lib/citizen-outcomes";
 
 export const searchWorkflowsInputSchema = z.object({
-  query: z.string().trim().min(2).max(500),
+  query: z.string().trim().min(2).max(1_000),
   locale: z.enum(["hi", "en"]),
   stateCode: z.string().trim().min(1).max(16).optional(),
-  districtCode: z.string().trim().min(1).max(16).optional(),
+  districtCode: z.string().trim().min(1).max(128).optional(),
+  clarificationAttempt: z.number().int().min(0).max(1).default(0),
   limit: z.number().int().min(1).max(3).default(3),
 }).strict().superRefine((value, ctx) => {
   if (value.districtCode && !value.stateCode) {
@@ -35,13 +37,15 @@ export type SearchWorkflowsResponse = {
   needsLocation: false;
   shouldClarify: boolean;
   clarificationQuestion?: string;
+  unsupported?: boolean;
 };
 
 type ScoreRow = { workflowVersionId: string; score: number };
 let warnedAboutSemanticSimilarity = false;
 
 export async function searchWorkflows(input: SearchWorkflowsInput): Promise<SearchWorkflowsResponse> {
-  const request = searchWorkflowsInputSchema.parse(input);
+  const parsed = searchWorkflowsInputSchema.parse(input);
+  const request = { ...parsed, query: redactCitizenText(parsed.query) };
   const db = getDatabase();
   const publishedVersions = await db.select({
     id: workflowVersionsTable.id,
@@ -188,7 +192,20 @@ export async function searchWorkflows(input: SearchWorkflowsInput): Promise<Sear
     });
   }
 
-  const ranked = rankCandidates([...evidence.values()]);
+  // Retrieval similarity is not evidence that a citizen has this problem.
+  // Bundled synthetic journeys require an affirmative topic mention. Negated
+  // topics ("no scholarship or death claim involved") cannot authorize a start.
+  const topicText = request.query.replace(/\b(?:no|not|without)\s+(?:(?:a|any)\s+)?(?:scholar\w*|scholor\w*|death|bereavement)[^.!?;\n]*/gi, "");
+  const scholarship = /\b(?:scholar\w*|scholor\w*|nsp|pfms|student grant)\b|छात्रवृत्ति|स्कॉलरशिप|वजीफा/i.test(topicText);
+  const bereavement = /\b(?:death|died|deceased|bereavement|passed away|mrityu)\b|मृत्यु|निधन|गुज़र|गुजर/i.test(topicText);
+  const topicMatches: Record<string, boolean> = {
+    scholarship,
+    bereavement,
+    "aadhaar-update": !scholarship && !bereavement && /\b(?:aadhaar|aadhar|adhar|uidai|myaadhaar)\b|आधार/i.test(topicText) && /update|correct|reject|अपडेट|सुधार|अस्वीकृत|रिजेक्ट/i.test(topicText),
+    "epfo-claim": !bereavement && !scholarship && /\b(?:epfo|pf|epfigms|provident fund)\b|पीएफ|भविष्य निधि/i.test(topicText) && /claim|withdraw|settled|paisa|money|payment|दाव|निकासी|पैसा|भुगतान/i.test(topicText),
+  };
+  const workflowByVersion = new Map(publishedVersions.map((version) => [version.id, version.workflowId]));
+  const ranked = rankCandidates([...evidence.values()].filter((candidate) => topicMatches[workflowByVersion.get(candidate.workflowVersionId)!] !== false));
   if (ranked.length === 0 || ranked[0]?.ambiguousWithNext) {
     return {
       results: [],

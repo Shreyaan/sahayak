@@ -119,6 +119,38 @@ describe("every user-facing string is bilingual", () => {
 });
 
 describe("workflow seeds", () => {
+  test("a student without a response gets payment-check preparation first", () => {
+    const fresh = startCase("scholarship");
+    const first = currentNode(fresh)!;
+    expect(first.detail.en).toContain("Public Financial Management System");
+    const check = currentNode(applyCitizenReply(fresh, "yes").caseSnapshot)!;
+    expect(check.link?.url).toBe("https://pfms.nic.in/SitePages/DBT_StatusTracker.aspx");
+    expect(check.visit?.carry.length).toBeGreaterThan(0);
+    expect(check.visit?.script.en).toContain("payment");
+    expect(check.visit?.collect.en).toContain("reference");
+    expect(check.detail.en).toContain("no response");
+  });
+  test("grievance preparation leaves payment unresolved until a submitted response and confirmed credit", () => {
+    const ready = confirmUntil(startCase("scholarship"), "grievance");
+    expect(ready.artifacts).toContain("escalation-draft");
+    const unchanged = applyCitizenReply(ready, "yes").caseSnapshot;
+    expect(currentNode(unchanged)?.id).toBe("grievance");
+    expect(stateOf(unchanged, "verify-again")).toBe("blocked");
+    const submitted = recordDeskReport(unchanged, {
+      optionId: "submitted", response: "SYNTHETIC: submitted to scheme grievance desk", referenceNumber: "SYN-ACK-1",
+      responseDate: "2026-09-06", recordedAt: "2026-09-06T10:00:00.000Z",
+    }).caseSnapshot;
+    expect(currentNode(submitted)?.id).toBe("credit");
+    expect(stateOf(submitted, "verify-again")).toBe("blocked");
+    const credited = applyCitizenReply(submitted, "yes").caseSnapshot;
+    expect(stateOf(credited, "verify-again")).toBe("done");
+  });
+
+  test("bank preparation includes the checklist before the branch response", () => {
+    const ready = confirmUntil(startCase("scholarship"), "bank-seeding");
+    expect(ready.artifacts).toContain("npci-checklist");
+    expect(ready.reports?.some((report) => report.stepId === "bank-seeding")).toBe(false);
+  });
   test("an older case keeps using its exact workflow version after a newer version is registered", () => {
     const original = workflows.scholarship;
     const versionOne = structuredClone(original) as WorkflowDefinition;
@@ -135,8 +167,8 @@ describe("workflow seeds", () => {
     expect(currentNode(newerCase)?.ask.en).toBe("Version two question");
   });
 
-  test("both journeys are powered by one engine and share step types", () => {
-    expect(workflowIds).toEqual(["bereavement", "scholarship"]);
+  test("all bundled journeys are powered by one engine and share step types", () => {
+    expect(workflowIds).toEqual(["bereavement", "scholarship", "aadhaar-update", "epfo-claim"]);
     expect(sharedStepTypes()).toEqual(
       expect.arrayContaining(["document-explain", "desk-verification", "case-complete"]),
     );

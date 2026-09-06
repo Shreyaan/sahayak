@@ -55,7 +55,10 @@ export function DeskResponseForm({
   const text = copy[locale];
   const [optionId, setOptionId] = useState("");
   const [response, setResponse] = useState("");
-  const [responseDate, setResponseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [responseDate, setResponseDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  });
   const [referenceNumber, setReferenceNumber] = useState("");
   const [evidence, setEvidence] = useState("");
   if (!node.report) return null;
@@ -72,13 +75,13 @@ export function DeskResponseForm({
   }}>
     <p className="m-0 text-sm font-extrabold text-[var(--green)]">{t(node.report.prompt, locale)}</p>
 
-    <label className="grid min-w-0 gap-1.5 text-sm font-extrabold">
-      {text.type}
-      <select className="min-h-11 w-full min-w-0 rounded-xl border border-[var(--line)] bg-white px-3 text-base font-normal" required value={optionId} onChange={(event) => setOptionId(event.target.value)}>
-        <option value="">{text.choose}</option>
-        {node.report.options.map((option) => <option key={option.id} value={option.id}>{t(option.label, locale)}</option>)}
-      </select>
-    </label>
+    <fieldset className="grid min-w-0 gap-2" disabled={busy}>
+      <legend className="mb-2 text-sm font-extrabold">{text.type}</legend>
+      {node.report.options.map((option) => <label key={option.id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-[var(--line)] bg-white p-3 text-base leading-relaxed has-checked:border-[var(--green)] has-checked:bg-[#edf4ee] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--green)]">
+        <input className="mt-1 size-4 shrink-0 accent-[var(--green)]" type="radio" name={`response-${node.id}`} required value={option.id} checked={optionId === option.id} onChange={() => setOptionId(option.id)} />
+        <span className="min-w-0 break-words">{t(option.label, locale)}</span>
+      </label>)}
+    </fieldset>
 
     <label className="grid min-w-0 gap-1.5 text-sm font-extrabold">
       {text.response}

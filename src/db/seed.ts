@@ -23,8 +23,8 @@ const seeds = [
   },
   {
     workflowId: "scholarship" as const,
-    workflowVersionId: "scholarship-v4",
-    version: 4,
+    workflowVersionId: "scholarship-v5",
+    version: 5,
     trust: {
       provenance: "legacy-verification-pending",
       reviewDate: null,
@@ -34,11 +34,46 @@ const seeds = [
       sourceLinks: [
         { label: "National Scholarships Portal", url: "https://scholarships.gov.in/Students" },
         { label: "National Scholarships Portal: About Us", url: "https://scholarships.gov.in/aboutUs" },
+        { label: "Department of Higher Education: NSP payment tracking", url: "https://highereducation.nagaland.gov.in/nsp-payment-status/" },
+        { label: "NSP: whom to address payment grievances", url: "https://nsp.gov.in/NSPADMIN/RTIContact" },
       ],
     },
     documents: {
       en: "Stuck scholarship. Scholarship released to PFMS but payment not received. NSP scholarship scholorship payment bank account NPCI Aadhaar seeding paisa nahi aaya student grant.",
       hi: "अटकी छात्रवृत्ति। NSP या PFMS में छात्रवृत्ति जारी दिखती है लेकिन बैंक खाते में पैसा नहीं आया। स्कॉलरशिप भुगतान NPCI आधार सीडिंग।",
+    },
+  },
+  {
+    workflowId: "aadhaar-update" as const, workflowVersionId: "aadhaar-update-v1", version: 1,
+    trust: {
+      provenance: "legacy-verification-pending", reviewDate: null,
+      verificationMethod: "Synthetic demonstration. Official guidance consulted on 6 September 2026; independent expert review and real citizen outcomes are pending. Sahayak does not access UIDAI systems.",
+      currentExpertSupportCount: 0, hasUnresolvedDisagreement: false,
+      sourceLinks: [
+        { label: "UIDAI: online services and update status", url: "https://www.uidai.gov.in/en/921-faqs/aadhaar-online" },
+        { label: "UIDAI: update processing and follow-up", url: "https://uidai.gov.in/en/circulars-memorandums-notification/282-english-uk/faqs/your-aadhaar/aadhaar-letter/1880-i-updated-my-aadhaar-recently-but-it-shows-under-manual-check-when-will-it-get-updated.html" },
+        { label: "PIB / UIDAI: rejection reasons and 1947 assistance", url: "https://www.pib.gov.in/PressReleasePage.aspx?PRID=1925404" },
+      ],
+    },
+    documents: {
+      en: "Aadhaar aadhar adhar update pending rejected correction name address myAadhaar UIDAI URN SRN acknowledgement update status reject ho gaya aadhar update atka hai.",
+      hi: "आधार अपडेट लंबित अस्वीकृत नाम पता सुधार पावती अनुरोध की स्थिति UIDAI myAadhaar 1947 आधार अपडेट अटका है रिजेक्ट हुआ।",
+    },
+  },
+  {
+    workflowId: "epfo-claim" as const, workflowVersionId: "epfo-claim-v1", version: 1,
+    trust: {
+      provenance: "legacy-verification-pending", reviewDate: null,
+      verificationMethod: "Synthetic own-PF-claim demonstration. Official EPFO/EPFiGMS guidance consulted on 6 September 2026; expert review and real citizen outcomes are pending. No eligibility or payment guarantees.",
+      currentExpertSupportCount: 0, hasUnresolvedDisagreement: false,
+      sourceLinks: [
+        { label: "EPFO: employee services and claim status", url: "https://www.epfindia.gov.in/site_en/For_Employees.php" },
+        { label: "EPFiGMS: registration, status and reminders", url: "https://epfigms.gov.in/" },
+      ],
+    },
+    documents: {
+      en: "EPFO PF own withdrawal claim pending rejected returned settled but not credited payment status EPFiGMS grievance reminder provident fund pf paisa nahi aaya claim atka.",
+      hi: "EPFO पीएफ PF भविष्य निधि अपना निकासी दावा लंबित अस्वीकृत वापस भुगतान पैसा नहीं आया दावा अटका EPFiGMS शिकायत संदर्भ रिमाइंडर।",
     },
   },
 ];
@@ -75,6 +110,6 @@ export async function seedPublishedWorkflows(): Promise<void> {
 
 if (import.meta.main) {
   await seedPublishedWorkflows();
-  console.info("Seeded two published workflow versions.");
+  console.info(`Seeded ${seeds.length} synthetic published workflow versions.`);
   process.exit(0);
 }

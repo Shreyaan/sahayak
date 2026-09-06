@@ -70,7 +70,7 @@ const phrases: Record<Locale, {
   },
 };
 
-const journeySignals: Record<WorkflowId, RegExp> = {
+const journeySignals: Partial<Record<WorkflowId, RegExp>> = {
   scholarship: /\b(?:scholarship|nsp|pfms|npci|seeding)\b|छात्रवृत्ति|वजीफ़ा/i,
   bereavement: /\b(?:form\s*4|death|died|bereave(?:ment)?|nominee|epfo)\b|मृत्यु|निधन/i,
 };

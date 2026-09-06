@@ -38,7 +38,7 @@ describe("POST /mcp", () => {
       arguments: { query: "scholarship released but payment missing", locale: "en" },
     })));
     const structured = (result.result as { structuredContent: { results: Array<{ workflowVersionId: string }> } }).structuredContent;
-    expect(structured.results[0]?.workflowVersionId).toBe("scholarship-v4");
+    expect(structured.results[0]?.workflowVersionId).toBe("scholarship-v5");
   });
 
   test("get_workflow rejects an unknown or unpublished version", async () => {

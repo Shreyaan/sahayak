@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useQueryState } from "nuqs";
 import { indiaDistricts, indiaStates, jurisdictionLabel } from "@/lib/india-locations";
 import { t as translate, type Locale } from "@/lib/locale";
-import { getWorkflowDefinition, type CaseSnapshot, type WorkflowDefinition } from "@/lib/workflow";
+import { getWorkflowDefinition, isSyntheticSeed, type CaseSnapshot, type WorkflowDefinition } from "@/lib/workflow";
 import type { ReviewJurisdiction } from "@/lib/review-case";
 import type { TrustMetadata } from "@/lib/trust";
 import { CitizenDiscovery } from "./citizen-discovery";
@@ -54,7 +54,7 @@ export function CitizenHome({
   const pastCases = savedCases.filter(isPast);
   const districts = indiaDistricts(stateCode);
   const publishedWorkflows = [...(library.data ?? [])].sort((left, right) =>
-    Number(right.id === "scholarship") - Number(left.id === "scholarship"));
+    Number(right.id === "scholarship") - Number(left.id === "scholarship") || Number(left.id === "bereavement") - Number(right.id === "bereavement"));
 
   function definitionFor(stored: StoredCase) {
     return library.data?.find((item) => item.workflowVersionId === stored.snapshot.workflowVersionId)?.definition
@@ -63,7 +63,9 @@ export function CitizenHome({
 
   function caseCard(stored: StoredCase) {
     const definition = definitionFor(stored);
-    const active = stored.snapshot.nodes.find((node) => ["needs-you", "verifying", "blocked"].includes(node.state));
+    const active = stored.snapshot.nodes.find((node) => node.state === "needs-you")
+      ?? stored.snapshot.nodes.find((node) => node.state === "verifying")
+      ?? stored.snapshot.nodes.find((node) => node.state === "blocked");
     const activeDefinition = definition?.nodes.find((node) => node.id === active?.id);
     const completed = stored.snapshot.nodes.filter((node) => node.state === "done" && node.id !== "case-done").length;
     const total = stored.snapshot.nodes.filter((node) => node.id !== "case-done").length;
@@ -81,11 +83,12 @@ export function CitizenHome({
       <p className="m-0 text-xs font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("eyebrow")}</p>
       <h1 className="my-2 text-[clamp(2.25rem,5vw,3.5rem)] font-bold leading-[.98] tracking-[-.045em]">{intro("heading")}</h1>
       <p className="m-0 max-w-xl text-lg leading-relaxed text-[#536059]">{intro("lead")}</p>
+      <p className="mt-3 text-sm text-[#65716b]">{locale === "hi" ? "स्वतंत्र प्रोटोटाइप · सरकारी सेवा नहीं · उदाहरणों में केवल काल्पनिक जानकारी दें" : "Independent prototype · Not a government service · Use fictional details in these examples"}</p>
     </section>
 
     {feedback && <p className="feedback" role="alert">{feedback}</p>}
 
-    <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid gap-4">
       <section className="rounded-[24px] border border-[var(--line)] bg-white/75 p-6 shadow-[0_18px_50px_rgba(52,43,27,.06)] max-sm:p-4">
         <div className="mb-5">
           <p className="m-0 text-xs font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text("search.eyebrow")}</p>
@@ -95,14 +98,14 @@ export function CitizenHome({
         <CitizenDiscovery locale={locale} stateCode={stateCode || undefined} districtCode={districtCode || undefined} onStart={onStart} />
       </section>
 
-      <section className="border-t-4 border-[var(--green)] bg-[#edf4ee] p-5">
-        <h2 className="text-lg font-bold">{text("location.title")}</h2>
+      <details className="rounded-xl border border-[var(--line)] bg-[#edf4ee] p-4">
+        <summary className="cursor-pointer font-bold text-[var(--green)]">{text("location.title")} · {locale === "hi" ? "वैकल्पिक" : "Optional"}{stateCode ? ` · ${stateCode}` : ""}</summary>
         <p className="mt-1 text-sm leading-relaxed text-[#536059]">{text("location.help")}</p>
         <div className="mt-4 grid gap-3">
           <label className="block text-xs font-extrabold text-[#536059]">{text("location.state")}<select className="mt-1 w-full rounded-xl border border-[#b8c8bd] bg-white px-3 py-2.5 text-base text-[var(--ink)]" value={stateCode} onChange={(event) => { void setStateCode(event.target.value || null); void setDistrictCode(null); }}><option value="">{text("location.allIndia")}</option>{indiaStates.map((state) => <option key={state.code} value={state.code}>{state.name}</option>)}</select></label>
           <label className="block text-xs font-extrabold text-[#536059]">{text("location.district")}<select className="mt-1 w-full rounded-xl border border-[#b8c8bd] bg-white px-3 py-2.5 text-base text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-50" value={districtCode} disabled={!stateCode} onChange={(event) => void setDistrictCode(event.target.value || null)}><option value="">{text("location.allDistricts")}</option>{districts.map((district) => <option key={district} value={district}>{district}</option>)}</select></label>
         </div>
-      </section>
+      </details>
     </div>
 
     <section className="mt-8">
@@ -119,7 +122,7 @@ export function CitizenHome({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-extrabold text-[var(--green)]">{jurisdictionLabel(item.jurisdiction, locale)}</span>
             {item.id === "scholarship" && <span className="rounded-full bg-[#fff1cf] px-2 py-0.5 text-[.65rem] font-extrabold uppercase tracking-wide text-[#79540d]">{text("library.flagship")}</span>}
-            {(item.id === "scholarship" || item.id === "bereavement") && <span className="rounded-full bg-[#f1e9dc] px-2 py-0.5 text-[.65rem] font-extrabold uppercase tracking-wide text-[#735c37]">{locale === "hi" ? "कृत्रिम उदाहरण" : "Synthetic example"}</span>}
+            {isSyntheticSeed(item.id) && <span className="rounded-full bg-[#f1e9dc] px-2 py-0.5 text-[.65rem] font-extrabold uppercase tracking-wide text-[#735c37]">{locale === "hi" ? "कृत्रिम उदाहरण" : "Synthetic example"}</span>}
           </div>
           <h3 className="mt-2 text-xl font-bold">{translate(item.definition.title, locale)}</h3>
           <p className="mt-1 leading-snug text-[#536059]">{translate(item.definition.subtitle, locale)}</p>
@@ -134,6 +137,6 @@ export function CitizenHome({
       {pastCases.length ? <div className="mt-3.5 grid grid-cols-2 gap-3 max-sm:grid-cols-1">{pastCases.map(caseCard)}</div> : <p className="mt-3.5 rounded-2xl border border-dashed border-[var(--line)] p-4 text-[#65716b]">{text("cases.pastEmpty")}</p>}
     </section>
 
-    <section className="mt-8"><McpCallout compact /></section>
+    <details className="mt-8 border-t border-[var(--line)] pt-4"><summary className="cursor-pointer text-sm font-bold text-[#536059]">{locale === "hi" ? "अपने AI सहायक से जोड़ें" : "Connect your AI assistant"}</summary><McpCallout compact /></details>
   </>;
 }

@@ -14,6 +14,21 @@ const caseRecord = {
 };
 
 describe("citizen outcome evidence", () => {
+  test("accepts a deviation on a blocked step without marking it worked", async () => {
+    const snapshot = { ...started, nodes: started.nodes.map((node, index) => index === 0 ? { ...node, state: "blocked" as const } : node) };
+    const saved: unknown[] = [];
+    const service = createCitizenOutcomeService({
+      getCase: async () => ({ id: "case-1", snapshot }),
+      getWorkflowVersion: async () => ({ scope: "central", stateCode: null, districtCode: null }),
+      createCaseWithOutcome: async () => undefined,
+      appendOutcome: async event => { saved.push(event); },
+      listOutcomes: async () => [],
+      summarizeOutcomes: async () => ({ awareCases: 0, resolvedCases: 0, evidencedResolvedCases: 0 }),
+    });
+    await expect(service.record("case-1", { kind: "different", stepId: started.nodes[0]!.id, detail: "SYNTHETIC: desk could not help" })).resolves.toMatchObject({ kind: "different" });
+    expect(saved).toHaveLength(1);
+    await expect(service.record("case-1", { kind: "worked", stepId: started.nodes[0]!.id })).rejects.toThrow("STEP_NOT_REPORTABLE");
+  });
   test("starts a case and its awareness event through one repository operation", async () => {
     const writes: unknown[] = [];
     const service = createCitizenOutcomeService({

@@ -175,7 +175,7 @@ export default function CaseCardPage({
     references: "संदर्भ संख्याएँ",
     noReferences: "अभी कोई संदर्भ संख्या दर्ज नहीं है",
     available: "तैयार दस्तावेज़",
-    noDocuments: "अभी कोई दस्तावेज़ तैयार नहीं है। यात्रा जारी रखने पर दस्तावेज़ यहाँ दिखाई देंगे।",
+    noDocuments: "इस केस में कोई तैयार दस्तावेज़ नहीं है। दर्ज जवाब और इतिहास नीचे हैं।",
     download: "Word दस्तावेज़ डाउनलोड करें",
     prepareGrievance: "अपनी शिकायत तैयार करें",
     prepareGrievanceDetail: "अपने दर्ज केस विवरण से AI मसौदा बनाएँ, फिर उसे पढ़कर सुधारें और डाउनलोड करें।",
@@ -194,7 +194,7 @@ export default function CaseCardPage({
     references: "Reference numbers",
     noReferences: "No reference number recorded yet",
     available: "Available documents",
-    noDocuments: "No documents are ready yet. They will appear here as you continue the journey.",
+    noDocuments: "This case has no generated documents. Recorded responses and history remain below.",
     download: "Download Word document",
     prepareGrievance: "Prepare your grievance",
     prepareGrievanceDetail: "Use your recorded case details to create an AI draft, then review, edit and download it.",
@@ -252,7 +252,7 @@ export default function CaseCardPage({
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
             <div className="rounded-xl bg-[#f2f5f2] p-3"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.status}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{complete ? t("caseCard.status.complete") : t("caseCard.status.inProgress")}</dd></div>
-            <div className="rounded-xl bg-[#f2f5f2] p-3"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.progress}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{done.length} / {steps.length}</dd></div>
+            <div className="rounded-xl bg-[#f2f5f2] p-3"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.progress}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{done.filter(step => step.node.id !== "case-done").length} / {steps.filter(step => step.node.id !== "case-done").length}</dd></div>
             <div className="col-span-2 rounded-xl bg-[#f2f5f2] p-3 sm:col-span-1"><dt className="text-[.68rem] font-extrabold uppercase tracking-wide text-[#627069]">{ui.documents}</dt><dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">{snapshot.artifacts.length}</dd></div>
           </dl>
           <div className="mt-3">{ownedTrust && ownedJurisdiction && <TrustDisclosure trust={ownedTrust} jurisdiction={ownedJurisdiction} locale={locale} />}</div>

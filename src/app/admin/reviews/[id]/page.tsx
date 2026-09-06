@@ -22,7 +22,7 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
     return <main className="admin-shell"><section className="auth-card"><p className="eyebrow">Review unavailable</p><h1>Review case data is unavailable right now</h1></section></main>;
   }
   if (!review) notFound();
-  return <main className="mx-auto min-h-screen w-full! max-w-6xl px-5 py-8">
+  return <main className="mx-auto min-h-screen w-full max-w-6xl px-5 py-8">
     <header className="mb-8 flex items-center justify-between">
       <Link className="text-xl font-extrabold text-[var(--ink)] no-underline" href="/">Sahayak <span className="text-sm text-[var(--green)]">सहायक</span></Link>
       <nav className="flex gap-5 text-sm font-bold text-[var(--green)]"><Link href="/admin/reviews">Review queue</Link><Link href="/admin/access">Access</Link></nav>

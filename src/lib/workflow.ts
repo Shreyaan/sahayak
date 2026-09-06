@@ -2,6 +2,7 @@ import { readIntent, type Intent } from "./intent";
 import type { Localized } from "./locale";
 import type { ArtifactDraft } from "./artifact-drafts";
 import { z } from "zod";
+import { aadhaarUpdate, epfoClaim } from "./workflows/additional";
 
 /**
  * The reusable typed step library. A workflow node names one of these types and
@@ -115,7 +116,7 @@ export type WorkflowDefinition = {
   authoredAt?: string;
 };
 
-export type WorkflowId = "bereavement" | "scholarship";
+export type WorkflowId = "bereavement" | "scholarship" | "aadhaar-update" | "epfo-claim";
 
 const localizedWorkflowSchema = z
   .object({
@@ -599,19 +600,20 @@ const scholarship: WorkflowDefinition = {
       type: "document-explain",
       title: { hi: "NSP स्थिति समझें", en: "Understand the NSP status" },
       detail: {
-        hi: "पोर्टल पर 'Released to PFMS' दिखता है, पर खाते में पैसा नहीं आया। केवल यह स्थिति देरी का कारण नहीं बताती।",
-        en: "The portal shows 'Released to PFMS', but no money reached the account. That status alone does not explain the delay.",
+        hi: "PFMS (Public Financial Management System) सरकारी भुगतान की स्थिति दिखाने वाली प्रणाली है। NSP पर 'Released to PFMS' का मतलब खाते में राशि जमा होना नहीं है। पहले भुगतान का वास्तविक संदेश खोजें; जवाब न हो तो भी आप अगला कदम शुरू कर सकते हैं।",
+        en: "PFMS (Public Financial Management System) shows government payment information. 'Released to PFMS' on NSP does not prove a bank credit. First find the actual payment message; you do not need an existing desk response to begin.",
       },
       ask: {
-        hi: "क्या आप PFMS या संबंधित डेस्क से मिले वास्तविक जवाब को दर्ज करने के लिए तैयार हैं?",
-        en: "Are you ready to record the actual response you received from PFMS or the relevant desk?",
+        hi: "भुगतान की स्थिति कहाँ और कैसे जाँचनी है, देखें?",
+        en: "See where and how to check your payment?",
       },
+      confirmLabel: { hi: "भुगतान जाँचने का तरीका दिखाएँ", en: "Show me how to check" },
       onConfirm: {
         state: "done",
         opens: "pfms-trace",
         reply: {
-          hi: "ठीक है। अब वही दर्ज करें जो पोर्टल या डेस्क ने वास्तव में बताया।",
-          en: "Alright. Now record exactly what the portal or desk actually told you.",
+          hi: "नीचे भुगतान जाँचने की तैयारी है। जवाब मिलने के बाद यहाँ लौटें।",
+          en: "Your payment-check preparation is below. Return here after checking.",
         },
       },
     },
@@ -620,8 +622,21 @@ const scholarship: WorkflowDefinition = {
       type: "desk-verification",
       title: { hi: "PFMS भुगतान जाँच", en: "PFMS payment check" },
       detail: {
-        hi: "PFMS या संबंधित डेस्क से मिले जवाब की तारीख, संदर्भ और प्रमाण दर्ज करें। सहायक कोई जवाब स्वयं प्राप्त नहीं करता।",
-        en: "Record the date, reference and evidence from PFMS or the relevant desk. Sahayak does not receive that response itself.",
+        hi: "नीचे PFMS भुगतान ट्रैकर खोलें। NSP श्रेणी चुनें, आवेदन ID और स्क्रीन पर माँगा गया सत्यापन भरें। पेज न खुले, रिकॉर्ड न मिले या संदेश समझ न आए तो नीचे दी गई डेस्क सहायता लें। अभी जवाब न हो तो फ़ॉर्म न भरें—आपका स्थान सुरक्षित है। सहायक ने कोई सरकारी जाँच शुरू नहीं की है।",
+        en: "Open the PFMS payment tracker below. Choose NSP, enter your application ID and complete the verification shown there. If the page is unavailable, no record appears, or the result is unclear, use the desk preparation below. If you have no response yet, leave the form empty—your place is saved. Sahayak has not started a government check.",
+      },
+      link: {
+        url: "https://pfms.nic.in/SitePages/DBT_StatusTracker.aspx",
+        action: { hi: "PFMS भुगतान ट्रैकर खोलें", en: "Open PFMS payment tracker" },
+        collect: { hi: "संदेश, जाँच की तारीख और भुगतान संदर्भ सुरक्षित रखें। OTP या पूरा खाता नंबर यहाँ न लिखें।", en: "Keep the message, check date and payment reference. Never enter an OTP or full account number here." },
+      },
+      visit: {
+        office: { hi: "सहायता: अपने संस्थान की छात्रवृत्ति डेस्क", en: "If you need help: your institution's scholarship desk" },
+        why: { hi: "पोर्टल न खुले या जवाब स्पष्ट न हो तो सही योजना विभाग और भुगतान संदेश पहचानने में सहायता माँगें। यह भुगतान स्वीकृत कराने का दावा नहीं है।", en: "If the portal fails or the result is unclear, ask for help identifying the scheme department and payment message. This is a request for information, not payment approval." },
+        carry: [{ hi: "NSP आवेदन ID और योजना का नाम", en: "NSP application ID and scheme name" }, { hi: "NSP स्थिति का स्क्रीनशॉट और हाल का बैंक विवरण—निजी जानकारी स्वयं रखें", en: "NSP status screenshot and recent bank statement—keep private details with you" }],
+        script: { hi: "NSP पर भुगतान जारी दिखता है लेकिन खाते में नहीं आया। कृपया भुगतान की वर्तमान स्थिति, संदर्भ और संबंधित योजना विभाग बताएँ। अगर रिकॉर्ड नहीं मिल रहा तो किससे पूछूँ?", en: "NSP shows released but my payment has not arrived. Please help me find its current status, reference and responsible scheme department. If no record is available, who should I ask?" },
+        expect: { hi: "उत्तर या अगला संपर्क माँगें; कोई निश्चित समयसीमा या भुगतान की गारंटी नहीं है।", en: "Ask for an answer or the next contact; no response deadline or payment is guaranteed." },
+        collect: { hi: "जवाब के शब्द, तारीख, भुगतान/पावती संदर्भ और बताए गए कार्यालय का नाम। संदर्भ न मिले तो वह भी लिखें।", en: "The exact response, date, payment/acknowledgement reference and office named. If no reference is provided, record that too." },
       },
       ask: {
         hi: "पोर्टल या डेस्क ने क्या बताया?",
@@ -653,6 +668,7 @@ const scholarship: WorkflowDefinition = {
             outcome: {
               state: "blocked",
               opens: "bank-seeding",
+              artifact: "npci-checklist",
               reply: {
                 hi: "आपका जवाब दर्ज हो गया। यह प्रकाशित यात्रा अब बैंक सीडिंग सुधार का समर्थित कदम दिखा सकती है।",
                 en: "Your response is recorded. This published journey can now show its supported bank-seeding recovery step.",
@@ -670,8 +686,8 @@ const scholarship: WorkflowDefinition = {
               en: "They told me something different",
             },
             reply: {
-              hi: "जवाब दर्ज है।",
-              en: "The response is recorded.",
+              hi: "जवाब सुरक्षित है। इसे NPCI समस्या न मानें। ऊपर दिए संस्थान/योजना संपर्क से भुगतान संदर्भ और सही अगला कदम पूछें; नया जवाब मिलने पर यहीं दर्ज करें।",
+              en: "Your response is recorded. Do not assume a cause. Ask the institution/scheme contact above for the payment reference and correct next action; return here with their answer.",
             },
           },
         ],
@@ -681,8 +697,8 @@ const scholarship: WorkflowDefinition = {
       id: "bank-seeding",
       type: "bank-seeding-fix",
       title: {
-        hi: "बैंक खाता सीडिंग ठीक करें",
-        en: "Fix the bank account seeding",
+        hi: "बैंक से सीडिंग जाँच का अनुरोध करें",
+        en: "Request a bank seeding check",
       },
       detail: {
         hi: "शाखा में जाकर खाता आधार से जुड़वाइए और NPCI mapping सक्रिय कराइए।",
@@ -695,8 +711,8 @@ const scholarship: WorkflowDefinition = {
       visit: {
         office: { hi: "आपकी बैंक शाखा", en: "Your bank branch" },
         why: {
-          hi: "NPCI mapping शाखा से ही सक्रिय होती है, पोर्टल से नहीं।",
-          en: "NPCI mapping is activated only at the branch, not on the portal.",
+          hi: "बैंक से दर्ज NPCI समस्या की जाँच और आवश्यक सुधार का तरीका पूछें। पावती मिलना सीडिंग सक्रिय होने की पुष्टि नहीं है।",
+          en: "Ask the bank to check the reported NPCI issue and explain any correction needed. An acknowledgement does not confirm activation.",
         },
         carry: [
           { hi: "पासबुक", en: "The passbook" },
@@ -710,7 +726,7 @@ const scholarship: WorkflowDefinition = {
           hi: "मेरा खाता आधार से जोड़कर NPCI mapping सक्रिय कीजिए। कृपया पावती दीजिए।",
           en: "Please link my account to Aadhaar and activate NPCI mapping. Please give me an acknowledgement.",
         },
-        expect: { hi: "लगभग 30 मिनट", en: "About 30 minutes" },
+        expect: { hi: "ज़रूरी दस्तावेज़ और अगली जाँच की तारीख शाखा से पूछें; समय की गारंटी नहीं है।", en: "Confirm required documents and a follow-up date with the branch; processing time is not guaranteed." },
         collect: {
           hi: "सीडिंग अनुरोध की पावती",
           en: "The acknowledgement for the seeding request",
@@ -802,6 +818,7 @@ const scholarship: WorkflowDefinition = {
             outcome: {
               state: "blocked",
               opens: "grievance",
+              artifact: "escalation-draft",
               reply: {
                 hi: "आपका अपडेट दर्ज है। अब पुष्टि किए गए विवरण से शिकायत का मसौदा बनाया जा सकता है।",
                 en: "Your update is recorded. A grievance draft can now be prepared from the confirmed case details.",
@@ -846,30 +863,49 @@ const scholarship: WorkflowDefinition = {
     {
       id: "grievance",
       type: "grievance-file",
-      title: { hi: "NSP शिकायत दर्ज करें", en: "File the NSP grievance" },
+      title: { hi: "शिकायत तैयार करें और जमा होने का रिकॉर्ड रखें", en: "Prepare a grievance and record submission" },
       detail: {
-        hi: "पुष्टि किए गए केस रिकॉर्ड से शिकायत का मसौदा। केवल दर्ज संदर्भ और प्रमाण जोड़े जाते हैं।",
-        en: "A grievance draft from the confirmed case record. Only recorded references and evidence are included.",
+        hi: "नीचे मसौदा तैयार करें, जाँचें और डाउनलोड करें। भुगतान संबंधी शिकायत अपनी योजना के नोडल मंत्रालय/विभाग को दें। नीचे NSP का मार्गदर्शन देखकर सही विभाग और उसका माध्यम खोजें; पता न चले तो संस्थान की छात्रवृत्ति डेस्क से पूछें। कोई कार्यालय स्वयं न गढ़ें। सहायक मसौदा भेजता नहीं है।",
+        en: "Prepare, review and download your draft below. Payment grievances belong with your scheme's nodal ministry/department. Use the NSP guidance below to identify the department and its submission channel; if unclear, ask your institution's scholarship desk. Do not guess a recipient. Sahayak does not send the draft.",
       },
       ask: {
-        hi: "क्या पुष्टि किए गए केस रिकॉर्ड से शिकायत का मसौदा बनाऊँ?",
-        en: "Create a grievance draft from the confirmed case record?",
+        hi: "मसौदा तैयार करना जमा करना नहीं है। स्वयं जमा करने के बाद ही नीचे उसका रिकॉर्ड भरें।",
+        en: "Preparing a draft is not submission. Fill the record below only after submitting it yourself.",
+      },
+      link: {
+        url: "https://nsp.gov.in/NSPADMIN/RTIContact",
+        action: { hi: "NSP: शिकायत किस विभाग को दें", en: "NSP: find the responsible grievance department" },
+        collect: { hi: "योजना विभाग, जमा करने का माध्यम और मिली पावती सुरक्षित रखें।", en: "Keep the scheme department, submission channel and acknowledgement you receive." },
       },
       onConfirm: {
-        state: "done",
-        opens: "credit",
-        resolves: "verify-again",
+        state: "needs-you",
         reply: {
           hi: "अब Case Card में शिकायत का मसौदा तैयार किया जा सकता है। उसे जाँचकर स्वयं जमा करें; सहायक इसे नहीं भेजेगा।",
           en: "The grievance can now be prepared in the Case Card. Review and submit it yourself; Sahayak will not send it.",
         },
         artifact: "escalation-draft",
       },
+      report: {
+        prompt: { hi: "स्वयं शिकायत देने के बाद रिकॉर्ड करें", en: "Record what happened after you submitted the grievance" },
+        options: [
+          {
+            id: "submitted",
+            label: { hi: "मैंने सही विभाग को शिकायत जमा की", en: "I submitted the grievance to the responsible department" },
+            reply: { hi: "आपके बताए अनुसार शिकायत जमा होना दर्ज है। भुगतान अभी भी लंबित है।", en: "Submission is recorded as reported by you. Payment remains unresolved." },
+            outcome: { state: "done", opens: "credit", reply: { hi: "शिकायत जमा होने का आपका रिकॉर्ड सुरक्षित है।", en: "Your submission record is saved." } },
+          },
+          {
+            id: "could-not-submit",
+            label: { hi: "जमा नहीं कर पाया या माध्यम स्पष्ट नहीं है", en: "I could not submit or the channel is unclear" },
+            reply: { hi: "कोई शिकायत जमा नहीं मानी गई। NSP मार्गदर्शन या संस्थान से सही विभाग/माध्यम पूछें। मसौदा और केस सुरक्षित हैं।", en: "No submission is claimed. Use the NSP guidance or ask your institution for the correct department/channel. Your draft and case remain saved." },
+          },
+        ],
+      },
     },
     {
       id: "credit",
       type: "benefit-credit",
-      title: { hi: "राशि खाते में", en: "Money in the account" },
+      title: { hi: "भुगतान आया या नहीं, जाँचें", en: "Check whether payment arrived" },
       detail: {
         hi: "सुधार के बाद खाते की जाँच करें। समस्या तभी हल मानी जाएगी जब नागरिक राशि आने की पुष्टि करे।",
         en: "Check the account after the correction. The problem is resolved only when the citizen confirms the credit.",
@@ -878,9 +914,13 @@ const scholarship: WorkflowDefinition = {
         hi: "क्या खाते में राशि जमा होने की पुष्टि दर्ज कर दूँ?",
         en: "Shall I record that the money has been credited?",
       },
+      confirmLabel: { hi: "हाँ, बैंक में राशि जमा दिख रही है", en: "Yes, my bank shows the credit" },
+      declineLabel: { hi: "नहीं, अभी भी इंतज़ार है", en: "No, I am still waiting" },
+      onDecline: { state: "needs-you", reply: { hi: "भुगतान लंबित ही रहेगा। जमा शिकायत के संदर्भ से उसी विभाग से अपडेट माँगें और बैंक विवरण दोबारा जाँचें। सहायक ने कोई जवाब नहीं प्राप्त किया है।", en: "Payment remains unresolved. Follow up with the same department using your submission reference and check your bank statement again. Sahayak has not received a response." } },
       onConfirm: {
         state: "done",
         opens: "case-done",
+        resolves: "verify-again",
         reply: {
           hi: "राशि जमा दर्ज हो गई।",
           en: "The credit is recorded.",
@@ -894,6 +934,8 @@ const scholarship: WorkflowDefinition = {
 export const workflows: Record<WorkflowId, WorkflowDefinition> = {
   bereavement,
   scholarship,
+  "aadhaar-update": { ...aadhaarUpdate, nodes: [...aadhaarUpdate.nodes, caseDoneNode] },
+  "epfo-claim": { ...epfoClaim, nodes: [...epfoClaim.nodes, caseDoneNode] },
 };
 
 export const workflowIds = Object.keys(workflows) as WorkflowId[];
@@ -1065,7 +1107,7 @@ export function recordDeskReport(
 }
 
 export function isSyntheticSeed(workflowId: string): boolean {
-  return workflowId === "scholarship" || workflowId === "bereavement";
+  return Object.hasOwn(workflows, workflowId);
 }
 
 /** The node the citizen is being asked about right now. */

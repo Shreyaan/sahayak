@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
 import { getDatabase } from "@/db/client";
 import {
   citizenCasesTable,
@@ -38,7 +39,7 @@ export type StoredWorkflow = {
 
 export type Store = {
   saveCase(id: string, snapshot: CaseSnapshot, ownerHash?: string): Promise<void>;
-  saveCaseProgress(id: string, snapshot: CaseSnapshot, ownerHash?: string): Promise<void>;
+  saveCaseProgress(id: string, snapshot: CaseSnapshot, ownerHash: string | undefined, expectedSnapshot: CaseSnapshot): Promise<void>;
   saveArtifactDraft(id: string, draft: ArtifactDraft, ownerHash?: string): Promise<void>;
   getCase(id: string, ownerHash?: string): Promise<StoredCase | null>;
   listCases(limit: number, ownerHash?: string): Promise<StoredCase[]>;
@@ -75,9 +76,12 @@ const memoryStore: Store = {
       ownerHash: existing?.ownerHash ?? ownerHash ?? null,
     });
   },
-  async saveCaseProgress(id, snapshot, ownerHash) {
+  async saveCaseProgress(id, snapshot, ownerHash, expectedSnapshot) {
     const existing = memory.cases.get(id);
     if (!existing || (ownerHash && existing.ownerHash !== ownerHash)) throw new Error("CASE_NOT_FOUND");
+    const { artifactDrafts: _savedDrafts, ...savedProgress } = existing.snapshot;
+    const { artifactDrafts: _expectedDrafts, ...expectedProgress } = expectedSnapshot;
+    if (!isDeepStrictEqual(savedProgress, expectedProgress)) throw new Error("CASE_CONFLICT");
     memory.cases.set(id, {
       ...existing,
       workflowId: snapshot.workflowId,
@@ -142,7 +146,7 @@ function databaseUrl(): string | null {
   return url && url.trim() ? url : null;
 }
 
-const pgStore: Store = {
+export const postgresStore: Store = {
   async saveCase(id, snapshot, ownerHash) {
     await getDatabase().insert(citizenCasesTable).values({
       id,
@@ -155,10 +159,13 @@ const pgStore: Store = {
       set: { workflowId: snapshot.workflowId, snapshot, updatedAt: new Date() },
     });
   },
-  async saveCaseProgress(id, snapshot, ownerHash) {
-    const condition = ownerHash
+  async saveCaseProgress(id, snapshot, ownerHash, expectedSnapshot) {
+    const ownership = ownerHash
       ? and(eq(citizenCasesTable.id, id), eq(citizenCasesTable.ownerHash, ownerHash))
       : eq(citizenCasesTable.id, id);
+    // Compare and write in one SQL statement. Draft edits have their own atomic
+    // write and must neither invalidate progress nor be overwritten by it.
+    const condition = and(ownership, sql`(${citizenCasesTable.snapshot} - 'artifactDrafts') = (${JSON.stringify(expectedSnapshot)}::jsonb - 'artifactDrafts')`);
     const snapshotJson = JSON.stringify(snapshot);
     const rows = await getDatabase().update(citizenCasesTable).set({
       workflowId: snapshot.workflowId,
@@ -172,7 +179,7 @@ const pgStore: Store = {
       `,
       updatedAt: new Date(),
     }).where(condition).returning({ id: citizenCasesTable.id });
-    if (rows.length === 0) throw new Error("CASE_NOT_FOUND");
+    if (rows.length === 0) throw new Error("CASE_CONFLICT");
   },
   async saveArtifactDraft(id, draft, ownerHash) {
     const condition = ownerHash
@@ -252,7 +259,7 @@ const unavailableStore: Store = new Proxy({} as Store, {
 
 export const store: Store = process.env.NODE_ENV === "test"
   ? memoryStore
-  : databaseUrl() ? pgStore : unavailableStore;
+  : databaseUrl() ? postgresStore : unavailableStore;
 
 export function resetMemoryStore(): void {
   if (process.env.NODE_ENV !== "test") return;

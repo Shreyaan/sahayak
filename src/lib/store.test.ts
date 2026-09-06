@@ -5,6 +5,15 @@ import { startCase, type CaseSnapshot } from "./workflow";
 const snapshot: CaseSnapshot = { ...startCase("bereavement") };
 
 describe("memory store", () => {
+  test("rejects a stale progress save instead of acknowledging lost evidence", async () => {
+    resetMemoryStore();
+    const original = structuredClone(snapshot);
+    await store.saveCase("concurrent-case", original, "owner");
+    await store.saveCaseProgress("concurrent-case", { ...original, day: 1 }, "owner", original);
+    await expect(store.saveCaseProgress("concurrent-case", { ...original, day: 2 }, "owner", original))
+      .rejects.toThrow("CASE_CONFLICT");
+    expect((await store.getCase("concurrent-case", "owner"))?.snapshot.day).toBe(1);
+  });
   test("persists and lists cases, newest first", async () => {
     resetMemoryStore();
 
@@ -70,7 +79,7 @@ describe("memory store", () => {
     const snapshotReadByChat = structuredClone(snapshot);
     await store.saveArtifactDraft("case-a", draft);
 
-    await store.saveCaseProgress("case-a", { ...snapshotReadByChat, day: 1 });
+    await store.saveCaseProgress("case-a", { ...snapshotReadByChat, day: 1 }, undefined, snapshotReadByChat);
 
     const saved = await store.getCase("case-a");
     expect(saved?.snapshot.day).toBe(1);

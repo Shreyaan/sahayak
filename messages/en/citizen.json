@@ -5,7 +5,7 @@
   },
   "intro": {
     "heading": "Which task is stuck?",
-    "lead": "Pick a journey. We will keep every next step visible."
+    "lead": "Know where to go, what to ask, and what proof to bring back."
   },
   "home": {
     "eyebrow": "Government work, in one conversation",
@@ -36,7 +36,7 @@
     "library": {
       "eyebrow": "Workflow library",
       "title": "Published journeys",
-      "copy": "Browse journeys that have passed Sahayak's publication boundary. Draft contributions never appear here.",
+      "copy": "Choose a supported problem. Each journey keeps your next action and recorded responses together.",
       "count": "{count} published",
       "loading": "Loading published journeys…",
       "flagship": "Flagship",
@@ -70,7 +70,7 @@
     "artifacts": "Papers created for you",
     "openCaseCard": "Open Case Card",
     "startOver": "Start over",
-    "allDone": "Every step in this case is done. Your Case Card is ready."
+    "allDone": "Your case record is ready. Confirm any real-world resolution separately below."
   },
   "state": {
     "pending": "Pending",
@@ -96,9 +96,9 @@
     "collect": "Note down any reference number the site shows."
   },
   "visit": {
-    "eyebrow": "Office visit",
-    "carry": "Carry",
-    "script": "Say this at the counter",
+    "eyebrow": "Prepare for this action",
+    "carry": "Keep ready",
+    "script": "What to say",
     "expect": "Expect",
     "collect": "Collect",
     "warning": "Do not pay a middleman or an unauthorised agent.",
@@ -122,7 +122,6 @@
       "experience": "Share an experience",
       "workflow": "Add a workflow"
     },
-    "heading": "Turn an experience into a reviewable draft.",
     "builder": {
       "copy": "Describe the process the way you lived it. Sahayak turns it into the same kind of guided journey citizens already use.",
       "about": "1 · About the journey",

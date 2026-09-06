@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { isRateLimited } from "@/lib/rate-limit";
 import { z } from "zod";
 import { reviewCaseService } from "@/lib/review-case-service-instance";
-import { verifyContributionPreview } from "@/lib/contribution-preview";
+import { MAX_PREVIEW_TOKEN_LENGTH, verifyContributionPreview } from "@/lib/contribution-preview";
 
 const submitSchema = z.object({
   confirmed: z.literal(true),
-  previewToken: z.string().trim().min(1).max(20_000),
+  previewToken: z.string().trim().min(1).max(MAX_PREVIEW_TOKEN_LENGTH),
 }).strict();
 
 function failure(code: string, message: string, status: number) {
