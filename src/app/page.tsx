@@ -345,20 +345,44 @@ export function HomeContent() {
     }
   }
 
-  async function downloadNextStep() {
+  function downloadBrief(text: string) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `sahayak-next-step-${locale}.txt`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+
+  /**
+   * A file in the Downloads folder is not where a citizen keeps things. On a
+   * phone the share sheet reaches WhatsApp, notes and print, so offer that
+   * first and fall back to the file only where sharing is unavailable.
+   */
+  async function keepNextStep() {
     if (!caseId || briefPending) return;
     setBriefPending(true);
     try {
       const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}?download=next-step&locale=${locale}`);
       if (!response.ok) throw new Error("BRIEF_UNAVAILABLE");
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `sahayak-next-step-${locale}.txt`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      const text = await response.text();
+
+      // A touch device is a phone the citizen carries to the desk; a mouse is a
+      // desktop where a file is the more useful artefact.
+      const onAPhone = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+      if (onAPhone && typeof navigator !== "undefined" && navigator.share) {
+        try {
+          await navigator.share({ title: locale === "hi" ? "सहायक — अगला कदम" : "Sahayak — your next step", text });
+          return;
+        } catch (error) {
+          // Backing out of the share sheet is a decision, not a failure.
+          if ((error as Error)?.name === "AbortError") return;
+        }
+      }
+
+      downloadBrief(text);
     } catch {
-      setFeedback(locale === "hi" ? "अभी सूची डाउनलोड नहीं हुई। तैयारी नीचे मौजूद है; फिर कोशिश करें।" : "The checklist could not be downloaded. Your preparation is still below; try again.");
+      setFeedback(locale === "hi" ? "अभी यह कदम सहेजा नहीं जा सका। तैयारी नीचे मौजूद है; फिर कोशिश करें।" : "This step could not be saved. Your preparation is still below; try again.");
     } finally {
       setBriefPending(false);
     }
@@ -474,7 +498,7 @@ export function HomeContent() {
                     </p>
                   )}
                   <div className="my-4 flex flex-wrap items-center gap-3 text-sm">
-                    <button type="button" className="min-h-11 rounded-xl border border-[var(--green)] px-4 py-2 font-bold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void downloadNextStep()}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "अगला कदम ऑफ़लाइन रखने के लिए डाउनलोड करें" : "Save next step for offline use")}</button>
+                    <button type="button" className="min-h-11 rounded-xl border border-[var(--green)] px-4 py-2 font-bold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep()}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "यह कदम अपने पास रखें" : "Keep this step with you")}</button>
                     {caseId && <a className="font-bold text-[var(--green)] underline" href={caseCardHref(caseId)}>{locale === "hi" ? "मेरी तैयारी और रिकॉर्ड" : "My preparation and record"}</a>}
                   </div>
                   <VisitCard node={current} locale={locale} />

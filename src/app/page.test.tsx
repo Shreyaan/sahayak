@@ -159,7 +159,7 @@ describe("citizen action priority", () => {
   renderHome({ searchParams: `?caseId=${caseId}` });
   const record = await screen.findByRole("button", { name: "I have a response to record" });
   expect(screen.queryByRole("textbox", { name: "What did they tell you?" }) === null).toBe(true);
-  expect(screen.getByRole("button", { name: "Save next step for offline use" }) !== null).toBe(true);
+  expect(screen.getByRole("button", { name: "Keep this step with you" }) !== null).toBe(true);
   fireEvent.click(record);
   expect(screen.getByRole("textbox", { name: "What did they tell you?" }) !== null).toBe(true);
 });
