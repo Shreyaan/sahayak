@@ -293,7 +293,7 @@ describe("citizen-reported desk responses", () => {
       recordedAt: "2026-09-06T10:00:00.000Z",
     });
 
-    expect(stateOf(result.caseSnapshot, "pfms-trace")).toBe("needs-you");
+    expect(stateOf(result.caseSnapshot, "pfms-trace")).toBe("blocked");
     expect(stateOf(result.caseSnapshot, "bank-seeding")).toBe("pending");
     expect(t(result.reply, "en")).toContain("recorded");
     expect(t(result.reply, "en")).not.toContain("NPCI");

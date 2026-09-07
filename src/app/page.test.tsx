@@ -12,7 +12,7 @@ import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
 import common from "../../messages/en/common.json";
 import citizen from "../../messages/en/citizen.json";
 import pages from "../../messages/en/pages.json";
-import { startCase, workflows } from "@/lib/workflow";
+import { startCase, workflows, recordDeskReport } from "@/lib/workflow";
 import Home, { transitionFeedback } from "./page";
 
 const caseId = "11111111-1111-4111-8111-111111111111";
@@ -394,4 +394,45 @@ test("a slow help reply cannot erase the next question being typed", async () =>
   finish(response({reply:"PFMS shows payment information.", caseSnapshot:snapshot}));
   await screen.findByText("PFMS shows payment information.");
   expect((input as HTMLTextAreaElement).value).toBe("Where can I find my application ID?");
+});
+
+
+test("a restored unmatched answer replaces the old payment instructions with paused guidance", async () => {
+  const paused = recordDeskReport(startCase("scholarship"), {optionId: "different", response: "Scheme closed; come back in April", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  mockCaseApi(paused);
+  renderHome({searchParams: `?caseId=${caseId}`});
+  await screen.findByRole("heading", {name: "Review the answer you received"});
+  expect(screen.queryByRole("link", {name: "Open PFMS payment tracker ↗"}) === null).toBe(true);
+  expect(screen.getByText("Scheme closed; come back in April").textContent).toContain("April");
+  fireEvent.click(screen.getByRole("button", {name: "Record a new answer or correction"}));
+  expect(await screen.findByRole("textbox", {name: "What did they tell you?"})).toBeDefined();
+});
+
+test("bank recovery puts response entry before preparation and keeps documents expandable", async () => {
+  const bank = recordDeskReport(startCase("scholarship"), {optionId: "npci-missing", response: "Demo: mapping issue", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  mockCaseApi(bank);
+  renderHome({searchParams: `?caseId=${caseId}`});
+  const record = await screen.findByRole("button", {name: "I have a response to record"});
+  const office = screen.getByText("Your bank branch", {exact: true});
+  expect(Boolean(record.compareDocumentPosition(office) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  const documents = screen.getByText("Documents and drafts · 1").closest("details")!;
+  expect(documents.open).toBe(false);
+  fireEvent.click(record);
+  expect(await screen.findByRole("textbox", {name: "What did they tell you?"})).toBeDefined();
+});
+
+
+test("the grievance step directly opens its preparation form", async () => {
+  const snapshot = startCase("scholarship");
+  snapshot.nodes = snapshot.nodes.map(node => ({...node, state: node.id === "grievance" ? "needs-you" : "pending"}));
+  snapshot.artifacts = ["escalation-draft"];
+  mockCaseApi(snapshot);
+  renderHome({searchParams: `?caseId=${caseId}`});
+  const prepare = await screen.findByRole("button", {name: "Prepare my grievance"});
+  const documents = screen.getByText("Documents and drafts · 1").closest("details")!;
+  documents.scrollIntoView = () => {};
+  expect(documents.open).toBe(false);
+  fireEvent.click(prepare);
+  expect(documents.open).toBe(true);
+  expect(document.activeElement).toBe(documents.querySelector("summary"));
 });

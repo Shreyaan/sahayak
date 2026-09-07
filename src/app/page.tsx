@@ -1,5 +1,7 @@
 "use client";
 
+import { caseAction, unmatchedResponse } from "@/lib/response-guidance";
+
 import { useLocale, useTranslations } from "next-intl";
 import { useQueryState } from "nuqs";
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
@@ -58,13 +60,10 @@ function VisitCard({
 
   return (
     <div className="mt-5 border-t border-[var(--line)] pt-5 text-[var(--ink)]">
-      <p className="m-0 mt-1.5 text-[.72rem] font-extrabold uppercase tracking-[.12em] leading-[1.5] text-[var(--green)]">
-        {text("visit.eyebrow")}
-      </p>
       <strong className="mt-1.5 block">
         {translate(node.visit.office, locale)}
       </strong>
-      <p className={VISIT_DETAIL_TEXT}>{translate(node.visit.why, locale)}</p>
+
       <p className={VISIT_LABEL_TEXT}>{text("visit.carry")}</p>
       <ul className="mt-1.5 pl-5 text-[.86rem] leading-[1.6] text-[#536059]">
         {tList(node.visit.carry, locale).map((item) => (
@@ -77,17 +76,15 @@ function VisitCard({
       >
         “{translate(node.visit.script, locale)}”
       </p>
-      <p className={VISIT_LABEL_TEXT}>{text("visit.expect")}</p>
-      <p className={VISIT_DETAIL_TEXT}>
-        {translate(node.visit.expect, locale)}
-      </p>
       <p className={VISIT_LABEL_TEXT}>{text("visit.collect")}</p>
       <p className={VISIT_DETAIL_TEXT}>
         {translate(node.visit.collect, locale)}
       </p>
-      <p className="mx-0 mt-3 mb-0 rounded-[10px] bg-[#fbeceb] px-2.5 py-2 text-[.86rem] leading-[1.5] font-bold text-[#8b2e24]">
-        {text("visit.warning")}
-      </p>
+      <details className="mt-2 text-sm text-[#536059]">
+        <summary className="min-h-11 cursor-pointer py-3 font-medium">{locale === "hi" ? "समय और ध्यान रखने वाली बातें" : "Timing and things to check"}</summary>
+        <p className="pb-2 leading-relaxed">{translate(node.visit.expect, locale)}</p>
+        <p className="pb-2 font-medium">{text("visit.warning")}</p>
+      </details>
     </div>
   );
 }
@@ -261,8 +258,11 @@ export function HomeContent() {
         setAnswer("");
       }
       setCaseSnapshot(result.caseSnapshot);
+      if (body.action === "record-desk-response") setResponseEntryStepId(undefined);
       setFeedback(
-        transitionFeedback(result.reply, actedStepId, result.caseSnapshot)
+        body.action === "record-desk-response" && getCaseWorkflowDefinition(result.caseSnapshot) && unmatchedResponse(result.caseSnapshot, getCaseWorkflowDefinition(result.caseSnapshot)!)
+          ? (locale === "hi" ? "जवाब सुरक्षित है। मार्गदर्शन रुका है।" : "Response saved. Guidance is paused.")
+          : transitionFeedback(result.reply, actedStepId, result.caseSnapshot)
       );
       const actedStep = actedStepId
         ? result.caseSnapshot.nodes.find(
@@ -500,13 +500,8 @@ export function HomeContent() {
   }
 
   const workflow = caseSnapshot && getCaseWorkflowDefinition(caseSnapshot);
-  const openNode = caseSnapshot?.nodes.find(
-    (node) => node.state === "needs-you"
-  );
-  const current =
-    workflow && openNode
-      ? workflow.nodes.find((node) => node.id === openNode.id)
-      : undefined;
+  const unmatched = caseSnapshot && workflow ? unmatchedResponse(caseSnapshot, workflow) : undefined;
+  const current = caseSnapshot && workflow ? caseAction(caseSnapshot, workflow) : undefined;
   useEffect(() => {
     setCanShare(
       typeof navigator !== "undefined" && typeof navigator.share === "function"
@@ -516,7 +511,7 @@ export function HomeContent() {
     if (!current) return;
     actionHeading.current?.focus({ preventScroll: true });
     actionHeading.current?.scrollIntoView?.({ block: "start" });
-  }, [current?.id, caseId]);
+  }, [current?.id, caseId, unmatched?.recordedAt]);
   /** The feedback form rates the step just acted on, which is not the step now shown above it. */
   const reportStepTitle =
     workflow && reportStepId
@@ -545,7 +540,9 @@ export function HomeContent() {
   // Speech must never repeat itself: skip the title and detail when the
   // question already carries them.
   const recovery = caseSnapshot && workflow ? recoveryContext(caseSnapshot, workflow) : undefined;
-  const helpQuestions = current?.id === "pfms-trace"
+  const helpQuestions = unmatched
+    ? (locale === "hi" ? ["मेरे दर्ज जवाब का मतलब समझाएँ", "क्या यह यात्रा अभी मेरी समस्या पर लागू होती है?"] : ["Explain the answer I recorded", "Does this journey still fit my situation?"])
+    : current?.id === "pfms-trace"
     ? (locale === "hi" ? ["PFMS क्या है?", "मुझे आवेदन ID नहीं पता", "वेबसाइट नहीं खुल रही"] : ["What is PFMS?", "I don’t know my application ID", "The website isn’t opening"])
     : (locale === "hi" ? ["यह कदम आसान भाषा में समझाएँ", "मुझे क्या साथ ले जाना है?"] : ["Explain this step simply", "What should I take with me?"]);
   const actionTitle = current ? translate(current.title, locale) : "";
@@ -562,6 +559,7 @@ export function HomeContent() {
         .join(". ")
     : "";
 
+  const documentsPanel = useRef<HTMLDetailsElement>(null);
   const artifactPanel =
     caseId && caseSnapshot && caseSnapshot.artifacts.length > 0 ? (
       <JourneyArtifacts
@@ -657,16 +655,20 @@ export function HomeContent() {
                   >
                     {actionTitle}
                   </h2>
-                  {recovery && <aside className="mb-4 border-l-4 border-[var(--marigold)] bg-[#fff8e8] p-3 text-sm" aria-label={locale === "hi" ? "कदम क्यों बदला" : "Why this step changed"}>
-                    <p className="font-bold">{locale === "hi" ? "आपके दर्ज जवाब के आधार पर अगला कदम बदला" : "Your recorded response changed the next step"}</p>
-                    <p className="mt-1">{translate(recovery.option.label, locale)}</p>
-                    <blockquote className="mt-2 whitespace-pre-wrap break-words">“{recovery.report.response}”</blockquote>
-                    <p className="mt-2 text-xs">{recovery.report.responseDate}{recovery.report.referenceNumber ? ` · ${recovery.report.referenceNumber}` : ""}</p>
-                    <p className="mt-2">{locale === "hi" ? "यह आपका बताया जवाब है। समस्या हल होने की पुष्टि अभी नहीं हुई है।" : "This is the response you reported. Resolution has not been confirmed."}</p>
+                  {unmatched && <aside className="mb-4 border-l-4 border-[var(--marigold)] bg-[#fff8e8] p-3 text-sm" aria-label={locale === "hi" ? "मार्गदर्शन रुका है" : "Guidance paused"}>
+                    <p className="font-bold">{locale === "hi" ? "मार्गदर्शन रुका है — समस्या हल नहीं हुई" : "Guidance paused — unresolved"}</p>
+                    <blockquote className="mt-2 whitespace-pre-wrap break-words">{unmatched.response}</blockquote>
+                    <p className="mt-2">{unmatched.responseDate}{unmatched.referenceNumber ? ` · ${unmatched.referenceNumber}` : ""}</p>
                   </aside>}
+                  {recovery && !unmatched && <details className="mb-4 border-l-2 border-[var(--marigold)] pl-3 text-sm text-[#536059]">
+                    <summary className="min-h-11 cursor-pointer py-2 font-medium text-[var(--green)]">{locale === "hi" ? "पिछला जवाब:" : "Previous response:"} {translate(recovery.option.label, locale)}</summary>
+                    <blockquote className="mt-2 whitespace-pre-wrap break-words">“{recovery.report.response}”</blockquote>
+                    <p className="mt-2">{recovery.report.responseDate}{recovery.report.referenceNumber ? ` · ${recovery.report.referenceNumber}` : ""}</p>
+                    <p className="my-2">{locale === "hi" ? "आपका बताया जवाब। समस्या हल होने की पुष्टि नहीं हुई है।" : "Your reported answer. Resolution has not been confirmed."}</p>
+                  </details>}
                   {showDetail && !current.link && (
                     <p className="m-0 mb-4 text-base leading-relaxed text-[#5a6560]">
-                      {actionDetail}
+                      {current.visit ? translate(current.visit.why, locale) : actionDetail}
                     </p>
                   )}
                   {!current.report && <p className="m-0 mb-4 text-base font-semibold leading-relaxed">{actionAsk}</p>}
@@ -686,77 +688,27 @@ export function HomeContent() {
                       </small>
                     </p>
                   )}
-                  {current.link && <details className="mt-3 text-sm text-[#536059]"><summary className="min-h-11 cursor-pointer py-3 font-semibold">{locale === "hi" ? "पूरी जानकारी और पेज न चले तो क्या करें" : "Full instructions and if the page doesn’t work"}</summary><p className="pb-3 leading-relaxed">{actionDetail}</p></details>}
-                  {current.link && current.visit ? (
-                    <details className="mt-5 rounded-xl bg-[#f4f2eb] px-4">
-                      <summary className="cursor-pointer py-4 text-sm font-semibold text-[var(--green)]">{locale === "hi" ? "जानकारी नहीं है या मदद चाहिए? डेस्क पर क्या पूछें" : "Missing details or need help? Prepare for the desk"}</summary>
-                      <div className="pb-4"><VisitCard node={current} locale={locale} /></div>
-                    </details>
-                  ) : <VisitCard node={current} locale={locale} />}
-          {current && (
-            <section className="mt-6 border-t border-[var(--line)] pt-5" aria-label={locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}>
-              <h3 className="text-lg font-bold">{locale === "hi" ? "समझ नहीं आया? सहायक से पूछें" : "Not sure what to do? Ask Sahayak"}</h3>
-              <p className="mt-1 text-sm text-[#65716b]">{locale === "hi" ? "अपनी भाषा में लिखें या बोलें। पूछने से आपका केस आगे नहीं बढ़ेगा।" : "Type or speak in your own words. Asking does not advance your case."}</p>
-              <div className="mt-3 flex flex-wrap gap-2">{helpQuestions.map(question => <button key={question} type="button" disabled={busy} onClick={() => askQuestion(question)} className="min-h-11 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-left text-sm font-semibold text-[var(--green)] hover:bg-[#edf4ee] disabled:opacity-50">{question}</button>)}</div>
-              <div className="mt-3 grid gap-3" role="log" aria-live="polite">
-                {chatTurns.map((turn, index) => <div key={index} className={turn.role === "assistant" ? "rounded-xl bg-[#edf4ee] p-3 text-sm leading-relaxed whitespace-pre-wrap" : "ml-6 text-sm text-[#536059] whitespace-pre-wrap"}>
-                  <strong className="mb-1 block">{turn.role === "assistant" ? (locale === "hi" ? "सहायक" : "Sahayak") : (locale === "hi" ? "आप" : "You")}</strong>{turn.content}
-                  {turn.role === "assistant" && <button type="button" className="mt-2 block min-h-11 font-semibold text-[var(--green)]" onClick={() => void speak(turn.content)}>{locale === "hi" ? "जवाब सुनें" : "Listen to answer"}</button>}
-                </div>)}
-                {chatError && <p role="alert" className="text-sm text-[#8b2e24]">{chatError}</p>}
-              </div>
-            <form
-              className="mt-5 flex items-end gap-2 border-t border-[var(--line)] pt-4"
-              onSubmit={send}
-            >
-              <button
-                className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
-                type="button"
-                onClick={toggleRecording}
-                aria-label={
-                  recording ? text("chat.recordStop") : text("chat.recordStart")
-                }
-              >
-                {recording ? "■" : "●"}
-              </button>
-              <textarea
-                className="w-full min-w-0 resize-none rounded-lg border border-[var(--line)] bg-white p-2.5 [font:inherit]"
-                aria-label={locale === "hi" ? "सहायक से अपना सवाल पूछें" : "Ask Sahayak a question"}
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                placeholder={locale === "hi" ? "इस कदम के बारे में पूछें…" : "Ask about this step…"}
-                rows={2}
-                maxLength={2_000}
-              />
-              <button
-                className="shrink-0 min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55"
-                disabled={busy || !answer.trim()}
-                type="submit"
-              >
-                {busy ? (locale === "hi" ? "पूछ रहे हैं…" : "Asking…") : (locale === "hi" ? "पूछें" : "Ask")}
-              </button>
-            </form>
-              <p className="mt-2 text-xs text-[#65716b]">{locale === "hi" ? "AI से समझने में मदद लें। यह बातचीत नया कदम खुलने या रीलोड पर मिट जाती है; ज़रूरी जवाब केस में दर्ज करें।" : "AI helps explain. This chat clears on a new step or reload; record important responses in your case."}</p>
-            </section>
-          )}
-                  {current.report && artifactPanel}
+                  {current.type === "grievance-file" && !unmatched && artifactPanel && <button
+                    type="button"
+                    className="my-3 min-h-11 rounded-xl bg-[var(--green)] px-4 py-3 font-bold text-white"
+                    onClick={() => {
+                      if (!documentsPanel.current) return;
+                      documentsPanel.current.open = true;
+                      documentsPanel.current.querySelector("summary")?.focus();
+                      documentsPanel.current.scrollIntoView({ block: "start" });
+                    }}
+                  >{locale === "hi" ? "शिकायत का मसौदा तैयार करें" : "Prepare my grievance"}</button>}
                   {current.report ? (
                     responseEntryStepId !== current.id ? (
-                      <div className="mt-6 border-t border-[var(--line)] pt-5">
-                        <h3 className="mb-2 text-base font-bold">{locale === "hi" ? "जवाब मिलने पर यहाँ लौटें" : "Come back when you have an answer"}</h3>
-                        <p className="m-0 text-sm leading-relaxed">
-                          {locale === "hi"
-                            ? "सही संदेश, तारीख और मिला संदर्भ नंबर रखें। केस सुरक्षित है—आगे बढ़ने के लिए इसी ब्राउज़र में लौटें।"
-                            : "Keep the exact message, date and any reference number. This case is saved—return in this browser to continue."}
-                        </p>
+                      <div className="my-4 print:hidden">
                         <button
                           type="button"
-                          className="mt-3 rounded-xl border-0 border border-[var(--green)] bg-white px-3.5 py-2.5 font-bold text-[var(--green)] disabled:cursor-not-allowed disabled:opacity-55"
+                          className={`min-h-11 rounded-xl px-4 py-3 font-bold disabled:opacity-55 ${current.link ? "border border-[var(--line)] text-[var(--green)]" : "bg-[var(--green)] text-white"}`}
                           onClick={() => setResponseEntryStepId(current.id)}
                         >
-                          {locale === "hi"
-                            ? "मेरे पास दर्ज करने के लिए जवाब है"
-                            : "I have a response to record"}
+                          {unmatched
+                            ? (locale === "hi" ? "नया जवाब या सुधार दर्ज करें" : "Record a new answer or correction")
+                            : (locale === "hi" ? "मेरे पास दर्ज करने के लिए जवाब है" : "I have a response to record")}
                         </button>
                       </div>
                     ) : (
@@ -801,16 +753,73 @@ export function HomeContent() {
                       </button>
                     </div>
                   )}
+                  {current.link && <details className="mt-3 text-sm text-[#536059]"><summary className="min-h-11 cursor-pointer py-3 font-semibold">{locale === "hi" ? "पूरी जानकारी और पेज न चले तो क्या करें" : "Full instructions and if the page doesn’t work"}</summary><p className="pb-3 leading-relaxed">{actionDetail}</p></details>}
+                  {current.link && current.visit ? (
+                    <details className="mt-5 rounded-xl bg-[#f4f2eb] px-4">
+                      <summary className="cursor-pointer py-4 text-sm font-semibold text-[var(--green)]">{locale === "hi" ? "जानकारी नहीं है या मदद चाहिए? डेस्क पर क्या पूछें" : "Missing details or need help? Prepare for the desk"}</summary>
+                      <div className="pb-4"><VisitCard node={current} locale={locale} /></div>
+                    </details>
+                  ) : <VisitCard node={current} locale={locale} />}
+          {current && (
+            <section className="mt-6 border-t border-[var(--line)] pt-5 print:hidden" aria-label={locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}>
+              <h3 className="text-lg font-bold">{locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}</h3>
+
+              <div className="mt-3 flex flex-wrap gap-2">{helpQuestions.map(question => <button key={question} type="button" disabled={busy} onClick={() => askQuestion(question)} className="min-h-11 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-left text-sm font-semibold text-[var(--green)] hover:bg-[#edf4ee] disabled:opacity-50">{question}</button>)}</div>
+              <div className="mt-3 grid gap-3" role="log" aria-live="polite">
+                {chatTurns.map((turn, index) => <div key={index} className={turn.role === "assistant" ? "rounded-xl bg-[#edf4ee] p-3 text-sm leading-relaxed whitespace-pre-wrap" : "ml-6 text-sm text-[#536059] whitespace-pre-wrap"}>
+                  <strong className="mb-1 block">{turn.role === "assistant" ? (locale === "hi" ? "सहायक" : "Sahayak") : (locale === "hi" ? "आप" : "You")}</strong>{turn.content}
+                  {turn.role === "assistant" && <button type="button" className="mt-2 block min-h-11 font-semibold text-[var(--green)]" onClick={() => void speak(turn.content)}>{locale === "hi" ? "जवाब सुनें" : "Listen to answer"}</button>}
+                </div>)}
+                {chatError && <p role="alert" className="text-sm text-[#8b2e24]">{chatError}</p>}
+              </div>
+            <form
+              className="mt-5 flex items-end gap-2 border-t border-[var(--line)] pt-4"
+              onSubmit={send}
+            >
+              <button
+                className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
+                type="button"
+                onClick={toggleRecording}
+                aria-label={
+                  recording ? text("chat.recordStop") : text("chat.recordStart")
+                }
+              >
+                {recording ? "■" : "●"}
+              </button>
+              <textarea
+                className="w-full min-w-0 resize-none rounded-lg border border-[var(--line)] bg-white p-2.5 [font:inherit]"
+                aria-label={locale === "hi" ? "सहायक से अपना सवाल पूछें" : "Ask Sahayak a question"}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                placeholder={locale === "hi" ? "इस कदम के बारे में पूछें…" : "Ask about this step…"}
+                rows={2}
+                maxLength={2_000}
+              />
+              <button
+                className="shrink-0 min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55"
+                disabled={busy || !answer.trim()}
+                type="submit"
+              >
+                {busy ? (locale === "hi" ? "पूछ रहे हैं…" : "Asking…") : (locale === "hi" ? "पूछें" : "Ask")}
+              </button>
+            </form>
+              <p className="mt-2 text-xs text-[#65716b]">{locale === "hi" ? "पूछने से केस नहीं बदलता। ज़रूरी जवाब केस में दर्ज करें; यह चैट रीलोड पर मिट जाती है।" : "Asking does not change your case. Record important answers; this chat clears on reload."}</p>
+            </section>
+          )}
+
                   <details className="mt-4 border-t border-[var(--line)] pt-2 text-sm">
                     <summary className="min-h-11 cursor-pointer py-3 font-medium text-[#65716b]">{locale === "hi" ? "यह कदम सहेजें या साझा करें" : "Save or share this step"}</summary>
                     <p className="mb-2 text-sm text-[#65716b]">{locale === "hi" ? "अपने पास रखने के लिए इस कदम की तैयारी की कॉपी लें।" : "Take a copy of these instructions to use away from Sahayak."}</p>
                     <div className="flex flex-wrap gap-3">
-                      <button ref={briefButton} type="button" className="min-h-11 rounded-lg border border-[var(--green)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("preview")}>{locale === "hi" ? "दोनों भाषाओं में देखें / प्रिंट करें" : "Preview / print bilingual brief"}</button>
+                      <button ref={briefButton} type="button" className="min-h-11 rounded-lg border border-[var(--green)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("preview")}>{locale === "hi" ? "देखें / प्रिंट करें" : "Preview / print brief"}</button>
                       {canShare && <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("share")}>{locale === "hi" ? "साझा करें" : "Share instructions"}</button>}
                       <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("download")}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "फ़ाइल डाउनलोड करें" : "Download instructions")}</button>
                     </div>
                   </details>
-                  {!current.report && artifactPanel}
+                  {artifactPanel && <details ref={documentsPanel} className="mt-4 border-t border-[var(--line)] pt-2">
+                    <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-[var(--green)]">{locale === "hi" ? "दस्तावेज़ और मसौदे" : "Documents and drafts"} · {caseSnapshot.artifacts.length}</summary>
+                    {artifactPanel}
+                  </details>}
                 </>
               ) : waiting ? (
                 <p

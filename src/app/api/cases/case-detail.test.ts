@@ -56,7 +56,11 @@ test('the owner can take the current action away before any desk response exists
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   const brief = await response.text();
   expect(brief).toContain('छात्रवृत्ति का भुगतान कहाँ अटका है, जाँचें');
-  expect(brief).toContain('scholarship-v6');
+  // The brief carries the selected UI language only, and never the internal version id.
+  expect(brief).not.toContain('scholarship-v6');
+  expect(brief).not.toContain('यात्रा संस्करण');
+  expect(brief).not.toContain('Workflow version');
+  expect(brief).not.toContain('My problem');
   expect(brief).not.toContain('undefined');
   const other = new Request(url);
   other.headers.set('cookie', `sahayak-browser=${crypto.randomUUID()}`);

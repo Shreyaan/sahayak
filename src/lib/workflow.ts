@@ -1,3 +1,4 @@
+import { caseAction, unmatchedResponse, unmatchedGuidance } from "./response-guidance";
 export type Intent = "affirmative" | "negative" | "unknown";
 import type { Localized } from "./locale";
 import type { ArtifactDraft } from "./artifact-drafts";
@@ -1145,8 +1146,9 @@ export function recordDeskReport(
   input: RecordDeskReportInput
 ): EngineResult {
   const definition = getCaseWorkflowDefinition(caseSnapshot);
+  const paused = definition && unmatchedResponse(caseSnapshot, definition);
   const entry = caseSnapshot.nodes.find(
-    (node) => node.state === "needs-you" || node.state === "verifying"
+    (node) => paused ? node.id === paused.stepId : node.state === "needs-you" || node.state === "verifying"
   );
   const node =
     entry && definition?.nodes.find((candidate) => candidate.id === entry.id);
@@ -1171,8 +1173,12 @@ export function recordDeskReport(
   return {
     caseSnapshot: option.outcome
       ? applyOutcome(withReport, node.id, option.outcome)
-      : withReport,
-    reply: option.reply,
+      : option.id === "different"
+        ? { ...withReport, nodes: withReport.nodes.map(entry => entry.id === node.id ? { ...entry, state: "blocked" as const } : entry) }
+        : paused
+          ? { ...withReport, nodes: withReport.nodes.map(entry => entry.id === node.id ? { ...entry, state: "needs-you" as const } : entry) }
+          : withReport,
+    reply: option.id === "different" && !option.outcome ? unmatchedGuidance.detail : option.reply,
   };
 }
 
@@ -1184,13 +1190,8 @@ export function isSyntheticSeed(workflowId: string): boolean {
 export function currentNode(
   caseSnapshot: CaseSnapshot
 ): WorkflowNode | undefined {
-  const open = caseSnapshot.nodes.find((node) => node.state === "needs-you");
-  return (
-    open &&
-    getCaseWorkflowDefinition(caseSnapshot)?.nodes.find(
-      (node) => node.id === open.id
-    )
-  );
+  const definition = getCaseWorkflowDefinition(caseSnapshot);
+  return definition ? caseAction(caseSnapshot, definition) : undefined;
 }
 
 function applyOutcome(
@@ -1247,6 +1248,10 @@ export function applyIntent(
   caseSnapshot: CaseSnapshot,
   intent: Intent
 ): EngineResult {
+  const definition = getCaseWorkflowDefinition(caseSnapshot);
+  if (definition && unmatchedResponse(caseSnapshot, definition)) {
+    return { caseSnapshot, reply: unmatchedGuidance.detail };
+  }
   const node = currentNode(caseSnapshot);
 
   if (!node) {

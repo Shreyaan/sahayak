@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { resetMemoryStore, store } from "@/lib/store";
 import { compileGeneratedContribution } from "@/lib/contribution";
-import { applyIntent, registerWorkflowDefinition, startCase } from "@/lib/workflow";
+import { applyIntent, registerWorkflowDefinition, startCase, recordDeskReport } from "@/lib/workflow";
 import { POST } from "./route";
 import { browserOwner } from "@/lib/browser-owner";
 
@@ -315,4 +315,22 @@ describe("POST /api/chat", () => {
 
     expect(response.status).toBe(400);
   });
+});
+
+
+test("paused guidance gives AI the actual answer without the obsolete payment instructions", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  let prompt = "";
+  mock.module("@openrouter/ai-sdk-provider", () => ({createOpenRouter: () => () => ({modelId: "test"})}));
+  mock.module("ai", () => ({generateText: async (input: {prompt: string}) => {prompt = input.prompt; return {text: "The desk told you to return in April. This is their reported advice, not a verified date."};}}));
+  const paused = recordDeskReport(startCase("scholarship"), {optionId: "different", response: "Scheme closed; return in April", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  const result = await POST(chatRequest({action: "help", message: "What does their answer mean?", locale: "en", caseSnapshot: paused}));
+  const body = await result.json();
+  expect(body.caseSnapshot).toEqual(paused);
+  const context = JSON.parse(prompt).context;
+  expect(context.guidancePaused).toBe(true);
+  expect(context.recordResponseButtonLabel).toBe("Record a new answer or correction");
+  expect(context.guidance).toBeUndefined();
+  expect(context.currentStep.link).toBeUndefined();
+  expect(context.unmatchedResponse.response).toContain("April");
 });

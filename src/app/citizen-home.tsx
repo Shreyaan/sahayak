@@ -1,4 +1,5 @@
 "use client";
+import { caseAction } from "@/lib/response-guidance";
 
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -110,7 +111,7 @@ export function CitizenHome({
       stored.snapshot.nodes.find((node) => node.state === "needs-you") ??
       stored.snapshot.nodes.find((node) => node.state === "verifying") ??
       stored.snapshot.nodes.find((node) => node.state === "blocked");
-    const activeDefinition = definition?.nodes.find(
+    const activeDefinition = (definition && caseAction(stored.snapshot, definition)) ?? definition?.nodes.find(
       (node) => node.id === active?.id
     );
     const completed = stored.snapshot.nodes.filter(

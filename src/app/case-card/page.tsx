@@ -1,4 +1,5 @@
 "use client";
+import { caseAction, unmatchedResponse } from "@/lib/response-guidance";
 
 import { useLocale, useTranslations } from "next-intl";
 import { use, useEffect, useState } from "react";
@@ -207,7 +208,9 @@ export default function CaseCardPage({
   const done = steps.filter((step) => step.state === "done");
   const current = steps.find((step) => step.state === "needs-you");
   const verifying = steps.filter((step) => step.state === "verifying");
-  const active = current ?? verifying[0];
+  const paused = unmatchedResponse(snapshot, seed);
+  const presented = caseAction(snapshot, seed);
+  const active = presented ? {node: presented, state: stateById.get(presented.id)} : current ?? verifying[0];
   const blocked = steps.filter((step) => step.state === "blocked");
   // A blocker the recovery step already closed: proof the case survived it.
   const cleared = steps.filter((step) =>
@@ -345,7 +348,7 @@ export default function CaseCardPage({
                 {ui.status}
               </dt>
               <dd className="mt-1 text-sm font-extrabold text-[var(--ink)]">
-                {complete
+                {paused ? (locale === "hi" ? "मार्गदर्शन रुका है" : "Guidance paused") : complete
                   ? t("caseCard.status.complete")
                   : t("caseCard.status.inProgress")}
               </dd>
