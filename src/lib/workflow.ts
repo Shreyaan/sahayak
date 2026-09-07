@@ -1,10 +1,15 @@
-import { caseAction, unmatchedResponse, unmatchedGuidance } from "./response-guidance";
+import {
+  caseAction,
+  unmatchedResponse,
+  unmatchedGuidance,
+} from "./response-guidance";
 export type Intent = "affirmative" | "negative" | "unknown";
 import type { Localized } from "./locale";
 import type { ArtifactDraft } from "./artifact-drafts";
 import { z } from "zod";
 import { punjabIncome } from "./workflows/punjab-income";
 import { aadhaarUpdate, epfoClaim } from "./workflows/additional";
+import { ClarificationNote } from "./clarification";
 
 /**
  * The reusable typed step library. A workflow node names one of these types and
@@ -278,6 +283,7 @@ export type CaseSnapshot = {
   nodes: CaseNode[];
   artifacts: ArtifactId[];
   reports?: DeskReport[];
+  clarificationNotes?: ClarificationNote[];
   /** AI-written drafts saved with this browser-private case after citizen review. */
   artifactDrafts?: Partial<Record<ArtifactId, ArtifactDraft>>;
   /** Simulated days elapsed. Demo time maps one simulated day to ten seconds. */
@@ -300,8 +306,8 @@ export const caseDoneNode: WorkflowNode = {
   onConfirm: {
     state: "done",
     reply: {
-      hi: "Case Card तैयार है। ऊपर से खोलकर प्रिंट कर सकते हैं।",
-      en: "Your Case Card is ready. Open it from the top to print it.",
+      hi: "Case Card तैयार है। इसे खोलकर प्रिंट कर सकते हैं।",
+      en: "Your Case Card is ready to open and print.",
     },
   },
 };
@@ -605,7 +611,10 @@ const scholarship: WorkflowDefinition = {
     {
       id: "pfms-trace",
       type: "desk-verification",
-      title: { hi: "छात्रवृत्ति का भुगतान कहाँ अटका है, जाँचें", en: "Check where your scholarship payment is stuck" },
+      title: {
+        hi: "छात्रवृत्ति का भुगतान कहाँ अटका है, जाँचें",
+        en: "Check where your scholarship payment is stuck",
+      },
       detail: {
         hi: "नीचे PFMS भुगतान ट्रैकर खोलें। NSP श्रेणी चुनें, आवेदन ID और स्क्रीन पर माँगा गया सत्यापन भरें। पेज न खुले, रिकॉर्ड न मिले या संदेश समझ न आए तो नीचे दी गई डेस्क सहायता लें। अभी जवाब न हो तो फ़ॉर्म न भरें—आपका स्थान सुरक्षित है। सहायक ने कोई सरकारी जाँच शुरू नहीं की है।",
         en: "Open the PFMS payment tracker below. Choose NSP, enter your application ID and complete the verification shown there. If the page is unavailable, no record appears, or the result is unclear, use the desk preparation below. If you have no response yet, leave the form empty—your place is saved. Sahayak has not started a government check.",
@@ -1147,8 +1156,10 @@ export function recordDeskReport(
 ): EngineResult {
   const definition = getCaseWorkflowDefinition(caseSnapshot);
   const paused = definition && unmatchedResponse(caseSnapshot, definition);
-  const entry = caseSnapshot.nodes.find(
-    (node) => paused ? node.id === paused.stepId : node.state === "needs-you" || node.state === "verifying"
+  const entry = caseSnapshot.nodes.find((node) =>
+    paused
+      ? node.id === paused.stepId
+      : node.state === "needs-you" || node.state === "verifying"
   );
   const node =
     entry && definition?.nodes.find((candidate) => candidate.id === entry.id);
@@ -1174,11 +1185,28 @@ export function recordDeskReport(
     caseSnapshot: option.outcome
       ? applyOutcome(withReport, node.id, option.outcome)
       : option.id === "different"
-        ? { ...withReport, nodes: withReport.nodes.map(entry => entry.id === node.id ? { ...entry, state: "blocked" as const } : entry) }
+        ? {
+            ...withReport,
+            nodes: withReport.nodes.map((entry) =>
+              entry.id === node.id
+                ? { ...entry, state: "blocked" as const }
+                : entry
+            ),
+          }
         : paused
-          ? { ...withReport, nodes: withReport.nodes.map(entry => entry.id === node.id ? { ...entry, state: "needs-you" as const } : entry) }
+          ? {
+              ...withReport,
+              nodes: withReport.nodes.map((entry) =>
+                entry.id === node.id
+                  ? { ...entry, state: "needs-you" as const }
+                  : entry
+              ),
+            }
           : withReport,
-    reply: option.id === "different" && !option.outcome ? unmatchedGuidance.detail : option.reply,
+    reply:
+      option.id === "different" && !option.outcome
+        ? unmatchedGuidance.detail
+        : option.reply,
   };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader } from "@/components/ui/card";
 import { artifactContent, renderArtifactBody } from "@/lib/artifacts";
 import type { ArtifactDraft } from "@/lib/artifact-drafts";
 import { t, type Locale } from "@/lib/locale";
@@ -39,7 +39,7 @@ export function JourneyArtifacts({
   const text = copy[locale];
 
   return (
-    <section className="mt-6 border-t border-[var(--line)] pt-6" aria-labelledby="journey-documents-title">
+    <section className="rounded-2xl border border-[var(--line)] bg-[#edf4ee] p-4 sm:p-5" aria-labelledby="journey-documents-title">
       <p className="m-0 text-[.72rem] font-extrabold uppercase tracking-[.12em] text-[var(--green)]">{text.eyebrow}</p>
       <h2 className="mb-0 mt-1 text-xl font-extrabold" id="journey-documents-title">{text.heading}</h2>
       <p className="mb-4 mt-1 text-sm leading-relaxed text-[#536059]">{text.intro}</p>
@@ -82,10 +82,12 @@ function ArtifactCard({
   return (
     <Card className="gap-0 border border-[var(--line)] bg-white py-0 shadow-none ring-0">
       <CardHeader className="gap-1 border-b border-[var(--line)] px-4 py-4 sm:px-5">
-        <CardTitle className="text-base font-extrabold text-[var(--ink)]">{t(artifact.title, locale)}</CardTitle>
+        <h3 className="text-base font-extrabold text-[var(--ink)]">{t(artifact.title, locale)}</h3>
         <CardDescription className="text-sm leading-relaxed text-[#536059]">{t(artifact.subtitle, locale)}</CardDescription>
       </CardHeader>
-      <CardContent className="px-4 py-4 sm:px-5">
+      <details data-artifact={id} className="px-4 pb-4 sm:px-5">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm font-bold text-[var(--green)] focus-visible:outline-2 focus-visible:outline-offset-2">{id === "escalation-draft" ? (locale === "hi" ? "मसौदा खोलें / संपादित करें" : "Open / edit draft") : (locale === "hi" ? "सूची देखें और डाउनलोड करें" : "View checklist & download")}</summary>
+        <div>
         {id === "escalation-draft" ? (
           <ArtifactDraftPanel
             caseId={caseId}
@@ -106,7 +108,8 @@ function ArtifactCard({
             </Button>
           </>
         )}
-      </CardContent>
+      </div>
+      </details>
     </Card>
   );
 }

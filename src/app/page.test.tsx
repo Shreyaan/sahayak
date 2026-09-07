@@ -237,14 +237,14 @@ describe("citizen action priority", () => {
     ).not.toBeNull();
     expect(
       screen
-        .getByRole("link", { name: "Download bank seeding checklist" })
+        .getByRole("link", { name: "Download bank seeding checklist", hidden: true })
         .getAttribute("href")
     ).toBe(`/api/cases/${caseId}/artifacts/npci-checklist?locale=en`);
     expect(
-      screen.getByRole("heading", { name: "Prepare your grievance" })
+      screen.getByRole("heading", { name: "Prepare your grievance", hidden: true })
     ).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Generate grievance with AI" })
+      screen.getByRole("button", { name: "Generate grievance with AI", hidden: true })
     ).not.toBeNull();
   });
 });
@@ -264,7 +264,7 @@ test("a citizen without a desk response sees preparation before being asked to f
   });
   renderHome({ searchParams: `?caseId=${caseId}` });
   const record = await screen.findByRole("button", {
-    name: "I have a response to record",
+    name: "Record the response",
   });
   expect(
     screen.queryByRole("textbox", { name: "What did they tell you?" }) === null
@@ -373,10 +373,10 @@ test("common questions use contextual help and leave the case on the same action
     return original(input, init);
   }) as unknown as typeof fetch;
   renderHome({ searchParams: `?caseId=${caseId}` });
-  fireEvent.click(await screen.findByRole("button", { name: "I don’t know my application ID" }));
+  fireEvent.click(await screen.findByRole("button", { name: "I can’t complete verification" }));
   await screen.findByText("Ask your institution's scholarship desk for help.");
   expect(sent.action).toBe("help");
-  expect(sent.message).toContain("application ID");
+  expect(sent.message).toContain("verification");
   expect(screen.getByRole("heading", { name: "Check where your scholarship payment is stuck" })).not.toBeNull();
 });
 
@@ -412,10 +412,10 @@ test("bank recovery puts response entry before preparation and keeps documents e
   const bank = recordDeskReport(startCase("scholarship"), {optionId: "npci-missing", response: "Demo: mapping issue", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
   mockCaseApi(bank);
   renderHome({searchParams: `?caseId=${caseId}`});
-  const record = await screen.findByRole("button", {name: "I have a response to record"});
+  const record = await screen.findByRole("button", {name: "Record the response"});
   const office = screen.getByText("Your bank branch", {exact: true});
   expect(Boolean(record.compareDocumentPosition(office) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-  const documents = screen.getByText("Documents and drafts · 1").closest("details")!;
+  const documents = document.querySelector<HTMLDetailsElement>("[data-artifact]")!;
   expect(documents.open).toBe(false);
   fireEvent.click(record);
   expect(await screen.findByRole("textbox", {name: "What did they tell you?"})).toBeDefined();
@@ -429,10 +429,64 @@ test("the grievance step directly opens its preparation form", async () => {
   mockCaseApi(snapshot);
   renderHome({searchParams: `?caseId=${caseId}`});
   const prepare = await screen.findByRole("button", {name: "Prepare my grievance"});
-  const documents = screen.getByText("Documents and drafts · 1").closest("details")!;
-  documents.scrollIntoView = () => {};
+  const documents = document.querySelector<HTMLDetailsElement>("[data-artifact]")!;
+  documents.parentElement!.parentElement!.parentElement!.parentElement!.scrollIntoView = () => {};
   expect(documents.open).toBe(false);
   fireEvent.click(prepare);
   expect(documents.open).toBe(true);
   expect(document.activeElement).toBe(documents.querySelector("summary"));
+});
+
+test("paused clarification is editable and a failed save preserves the question", async () => {
+  const paused = recordDeskReport(startCase("scholarship"), {optionId: "different", response: "Scheme closed; return in April", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  mockCaseApi(paused);
+  const baseFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) !== "/api/chat") return baseFetch(input, init);
+    const body = JSON.parse(String(init?.body));
+    if (body.action === "save-clarification") return response({code: "CASE_SAVE_FAILED"}, 503);
+    return response({caseSnapshot: paused, aiGenerated: true, reply: "Which application?", clarification: {
+      explanation: "The closure may concern new applications.", question: "Did they mean your existing payment?", nextQuestion: "Does this closure apply to my existing payment?", supportedOptionId: null,
+    }});
+  }) as typeof fetch;
+  renderHome({searchParams: `?caseId=${caseId}`});
+  fireEvent.click(await screen.findByRole("button", {name: "Help me understand this answer"}));
+  await screen.findByText("Did they mean your existing payment?");
+  const note = screen.getByRole("textbox", {name: "A question to keep"});
+  fireEvent.change(note, {target: {value: "My edited question about April"}});
+  fireEvent.click(screen.getByRole("button", {name: "Keep question with my case"}));
+  await screen.findByRole("alert");
+  expect((note as HTMLTextAreaElement).value).toBe("My edited question about April");
+  expect(screen.queryByText("Question saved. This is not a government response.")).toBeNull();
+});
+
+test("completion puts the Case Card link before documents and only asks for resolution", async () => {
+  const closing = startCase("scholarship");
+  closing.nodes = closing.nodes.map(node => ({...node, state: node.id === "case-done" ? "needs-you" : "done"}));
+  closing.artifacts = ["npci-checklist"];
+  mockCaseApi(closing);
+  const baseFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "/api/chat") return response({caseSnapshot: {...closing, nodes: closing.nodes.map(node => ({...node, state: "done"}))}, reply: "Your Case Card is ready. Open it from the top to print it."});
+    if (String(input).includes("/outcomes")) return response({outcomes: []});
+    return baseFetch(input, init);
+  }) as typeof fetch;
+  renderHome({searchParams: `?caseId=${caseId}`});
+  fireEvent.click(await screen.findByRole("button", {name: citizen.action.yesDefault}));
+  await screen.findByText("Was the problem resolved?");
+  const link = screen.getByRole("link", {name: /Open Case Card/});
+  expect(link.getAttribute("href")).toContain(caseId);
+  expect(Boolean(link.compareDocumentPosition(screen.getByRole("heading", {name: "Your documents"})) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  expect(screen.queryByText("Feedback on the previous step")).toBeNull();
+  expect(screen.queryByText("Your Case Card is ready. Open it from the top to print it.")).toBeNull();
+});
+
+
+test("restored cases retain feedback for the recorded step and visible document names", async () => {
+  const bank = recordDeskReport(startCase("scholarship"), {optionId: "npci-missing", response: "Demo: mapping issue", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  mockCaseApi(bank);
+  renderHome({searchParams: `?caseId=${caseId}`});
+  expect(await screen.findByText("Feedback on the previous step")).toBeDefined();
+  expect(screen.getByRole("heading", {name: "Bank seeding checklist"})).toBeDefined();
+  expect(screen.getByText(/Your steps/)).toBeDefined();
 });

@@ -1,3 +1,6 @@
+import { correctServiceLink } from "@/lib/service-link-corrections";
+import { clarificationNoteSchema } from "@/lib/clarification";
+import { clarifyResponse } from "@/lib/clarify-response";
 import { unmatchedResponse } from "@/lib/response-guidance";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
@@ -54,6 +57,7 @@ const caseSnapshotSchema = z.object({
   artifactDrafts: z.object({
     "escalation-draft": artifactDraftSchema.optional(),
   }).strict().optional(),
+  clarificationNotes: z.array(clarificationNoteSchema).max(40).optional(),
   day: z.number().int().min(0).max(400),
 }).strict();
 
@@ -66,7 +70,7 @@ const deskResponseSchema = z.object({
 }).strict();
 
 const requestSchema = z.object({
-  action: z.enum(["help", "reply", "record-desk-response"]).default("help"),
+  action: z.enum(["help", "reply", "record-desk-response", "save-clarification"]).default("help"),
   /** A labeled button answers with its meaning directly; free text is read. */
   intent: z.enum(["affirmative", "negative"]).optional(),
   message: z.string().trim().max(2_000).default(""),
@@ -74,6 +78,7 @@ const requestSchema = z.object({
   caseId: z.string().trim().max(64).optional(),
   caseSnapshot: caseSnapshotSchema,
   deskResponse: deskResponseSchema.optional(),
+  reportRecordedAt: z.iso.datetime().optional(),
   conversation: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(3000) }).strict()).max(8).default([]),
 }).strict().refine(
   ({ action, message, intent, deskResponse }) => action === "record-desk-response"
@@ -165,9 +170,29 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   }
 
+  if (action === "save-clarification") {
+    const report = definition && unmatchedResponse(caseSnapshot, definition);
+    if (!caseId || !caseOwnerHash) return NextResponse.json({code: "CASE_ACCESS_REQUIRED", error: "Open your saved case first."}, {status: 401});
+    if (!report || report.recordedAt !== parsed.data.reportRecordedAt) return NextResponse.json({code: "CASE_CONFLICT", error: "The recorded answer changed. Reload before saving this note."}, {status: 409});
+    const notes = caseSnapshot.clarificationNotes ?? [];
+    if (notes.length >= 40 || message.length > 1500) return NextResponse.json({code: "INVALID_NOTE", error: "This note cannot be saved. Keep it under 1500 characters; a case holds 40 notes."}, {status: 400});
+    const next = {...caseSnapshot, clarificationNotes: [...notes, {reportRecordedAt: report.recordedAt, text: redactCitizenText(message), savedAt: new Date().toISOString()}]};
+    try {
+      await store.saveCaseProgress(caseId, next, caseOwnerHash, caseSnapshot);
+      return NextResponse.json({caseSnapshot: next, reply: locale === "hi" ? "सवाल केस में सुरक्षित है।" : "Question saved with your case."});
+    } catch (error) {
+      const conflict = error instanceof Error && error.message === "CASE_CONFLICT";
+      return NextResponse.json({code: conflict ? "CASE_CONFLICT" : "CASE_SAVE_FAILED", error: "Your note was not saved. Reload and try again."}, {status: conflict ? 409 : 503});
+    }
+  }
+
   if (action === "help") {
     const node = currentNode(caseSnapshot);
     const unmatched = definition && unmatchedResponse(caseSnapshot, definition);
+    if (unmatched && definition) {
+      const result = await clarifyResponse({definition, report: unmatched, locale, message, conversation});
+      return NextResponse.json({caseSnapshot, ...result, reply: [result.clarification.explanation, result.clarification.question].filter(Boolean).join("\n\n")});
+    }
     const unavailable = locale === "hi"
       ? "अभी AI सहायता उपलब्ध नहीं है। ऊपर दिए कदम और सहायता संपर्क का उपयोग करें। आपका केस नहीं बदला है; थोड़ी देर बाद फिर पूछें।"
       : "AI help is unavailable right now. Use the step and support contact above. Your case has not changed; try asking again shortly.";
@@ -187,7 +212,7 @@ export async function POST(request: Request) {
           recordResponseButtonLabel: unmatched
             ? (locale === "hi" ? "नया जवाब या सुधार दर्ज करें" : "Record a new answer or correction")
             : (locale === "hi" ? "मेरे पास दर्ज करने के लिए जवाब है" : "I have a response to record"),
-          guidance: unmatched ? undefined : definition,
+          guidance: unmatched ? undefined : {...definition, nodes: definition!.nodes.map(correctServiceLink)},
           currentStep: unmatched && node ? { id: node.id, title: node.title, detail: node.detail, ask: node.ask } : node,
           progress: caseSnapshot.nodes,
           citizenReportedEvidence: (caseSnapshot.reports ?? []).map(({ stepId, response, responseDate }) => ({ stepId, response: redactCitizenText(response), responseDate })),

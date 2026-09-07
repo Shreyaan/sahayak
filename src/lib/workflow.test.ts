@@ -124,11 +124,12 @@ describe("workflow seeds", () => {
     const check = currentNode(fresh)!;
     expect(check.id).toBe("pfms-trace");
     expect(check.detail.en).toContain("PFMS");
-    expect(check.link?.url).toBe("https://pfms.nic.in/SitePages/DBT_StatusTracker.aspx");
+    expect(check.link?.url).toBe("https://pfms.nic.in/SitePages/KnowYourPayment_Dw_NewNew.aspx");
     expect(check.visit?.carry.length).toBeGreaterThan(0);
     expect(check.visit?.script.en).toContain("payment");
     expect(check.visit?.collect.en).toContain("reference");
-    expect(check.detail.en).toContain("no response");
+    expect(check.detail.en).toContain("your place is saved");
+    expect(fresh.reports).toEqual([]);
   });
   test("grievance preparation leaves payment unresolved until a submitted response and confirmed credit", () => {
     const ready = confirmUntil(startCase("scholarship"), "grievance");

@@ -322,15 +322,51 @@ test("paused guidance gives AI the actual answer without the obsolete payment in
   process.env.OPENROUTER_API_KEY = "test-key";
   let prompt = "";
   mock.module("@openrouter/ai-sdk-provider", () => ({createOpenRouter: () => () => ({modelId: "test"})}));
-  mock.module("ai", () => ({generateText: async (input: {prompt: string}) => {prompt = input.prompt; return {text: "The desk told you to return in April. This is their reported advice, not a verified date."};}}));
+  mock.module("ai", () => ({generateText: async (input: {prompt: string}) => {prompt = input.prompt; return {output: {explanation: "The desk told you to return in April, which is unverified.", question: "Did they mean new applications or your existing payment?", nextQuestion: "Does the closure apply to my existing payment?", supportedOptionId: null}};}}));
   const paused = recordDeskReport(startCase("scholarship"), {optionId: "different", response: "Scheme closed; return in April", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
   const result = await POST(chatRequest({action: "help", message: "What does their answer mean?", locale: "en", caseSnapshot: paused}));
   const body = await result.json();
   expect(body.caseSnapshot).toEqual(paused);
-  const context = JSON.parse(prompt).context;
-  expect(context.guidancePaused).toBe(true);
-  expect(context.recordResponseButtonLabel).toBe("Record a new answer or correction");
-  expect(context.guidance).toBeUndefined();
-  expect(context.currentStep.link).toBeUndefined();
-  expect(context.unmatchedResponse.response).toContain("April");
+  const context = JSON.parse(prompt);
+  expect(context.response).toContain("April");
+  expect(prompt).not.toContain("Open PFMS");
+  expect(body.clarification.question).toContain("existing payment");
+  expect(body.aiGenerated).toBe(true);
+  const followup = await POST(chatRequest({action: "help", message: "I do not know", locale: "en", caseSnapshot: paused, conversation: [{role: "assistant", content: body.reply}]}));
+  const followed = await followup.json();
+  expect(followed.clarification.question).toBeNull();
+  expect(followed.caseSnapshot).toEqual(paused);
+});
+
+
+test("clarification notes persist separately and stale report notes are refused", async () => {
+  resetMemoryStore();
+  const caseId = crypto.randomUUID(); const token = crypto.randomUUID();
+  const owner = browserOwner(ownedChatRequest({}, token)).hash;
+  const paused = recordDeskReport(startCase("scholarship", "scholarship-v6"), {optionId: "different", response: "Scheme closed; return in April", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  await store.saveCase(caseId, paused, owner);
+  const input = {action: "save-clarification", caseId, caseSnapshot: paused, locale: "en", message: "Does this concern my existing payment?", reportRecordedAt: paused.reports![0].recordedAt};
+  const response = await POST(ownedChatRequest(input, token));
+  expect(response.status).toBe(200);
+  const saved = (await store.getCase(caseId, owner))!.snapshot;
+  expect(saved.clarificationNotes?.[0].text).toContain("existing payment");
+  expect(saved.nodes).toEqual(paused.nodes);
+  expect(saved.reports).toEqual(paused.reports);
+  expect(saved.workflowVersionId).toBe(paused.workflowVersionId);
+  const stale = await POST(ownedChatRequest({...input, reportRecordedAt: "2026-09-07T10:00:00Z"}, token));
+  expect(stale.status).toBe(409);
+  const other = await POST(ownedChatRequest(input, crypto.randomUUID()));
+  expect(other.status).toBe(404);
+});
+
+test("paused interpretation rejects invented options and falls back without progressing", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  mock.module("ai", () => ({generateText: async () => ({output: {explanation: "Go now", question: null, nextQuestion: "Where?", supportedOptionId: "invented"}})}));
+  const paused = recordDeskReport(startCase("scholarship"), {optionId: "different", response: "Something else", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  const response = await POST(chatRequest({action: "help", message: "Explain", locale: "hi", caseSnapshot: paused}));
+  const body = await response.json();
+  expect(body.aiGenerated).toBe(false);
+  expect(body.clarification.supportedOptionId).toBeNull();
+  expect(body.clarification.nextQuestion).toContain("मौजूदा");
+  expect(body.caseSnapshot).toEqual(paused);
 });

@@ -28,3 +28,21 @@ test("PostgreSQL never acknowledges an overwritten concurrent report", async () 
     await getDatabase().delete(citizenCasesTable).where(eq(citizenCasesTable.id, id));
   }
 });
+
+test("PostgreSQL keeps clarification notes on reload and rejects competing stale reports", async () => {
+  const id = `synthetic-clarification-${crypto.randomUUID()}`;
+  const original = recordDeskReport(startCase("scholarship"), {optionId: "different", response: "Synthetic: scheme closed", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:00:00Z"}).caseSnapshot;
+  await postgresStore.saveCase(id, original, "synthetic-owner");
+  try {
+    const updated = {...original, clarificationNotes: [{text: "Does that apply to my existing payment?", reportRecordedAt: original.reports![0].recordedAt, savedAt: "2026-09-08T10:05:00Z"}]};
+    await postgresStore.saveCaseProgress(id, updated, "synthetic-owner", original);
+    const stale = recordDeskReport(original, {optionId: "npci-missing", response: "Synthetic later clarification", responseDate: "2026-09-08", recordedAt: "2026-09-08T10:06:00Z"}).caseSnapshot;
+    await expect(postgresStore.saveCaseProgress(id, stale, "synthetic-owner", original)).rejects.toThrow("CASE_CONFLICT");
+    const saved = (await postgresStore.getCase(id, "synthetic-owner"))!.snapshot;
+    expect(saved.clarificationNotes).toEqual(updated.clarificationNotes);
+    expect(saved.reports).toEqual(original.reports);
+    expect(saved.nodes).toEqual(original.nodes);
+  } finally {
+    await getDatabase().delete(citizenCasesTable).where(eq(citizenCasesTable.id, id));
+  }
+});

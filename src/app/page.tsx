@@ -1,5 +1,7 @@
 "use client";
 
+import { DemoDetails } from "./demo-details";
+import { PausedResponseHelp } from "./paused-response-help";
 import { caseAction, unmatchedResponse } from "@/lib/response-guidance";
 
 import { useLocale, useTranslations } from "next-intl";
@@ -42,6 +44,8 @@ export function transitionFeedback(
 }
 
 /** `.visit-card p` (globals.css) styles any plain paragraph inside the card; kept as one string so every plain line matches it. */
+const DISCLOSURE_SUMMARY = "min-h-11 cursor-pointer py-3 text-sm font-medium text-[#536059] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)]";
+
 const VISIT_DETAIL_TEXT =
   "m-[6px_0px_0px] text-[#536059] text-[.86rem] leading-[1.5]";
 /** `.visit-card .visit-label` overrides color/size/weight but the margin and line-height still cascade in from `.visit-card p`. */
@@ -260,7 +264,9 @@ export function HomeContent() {
       setCaseSnapshot(result.caseSnapshot);
       if (body.action === "record-desk-response") setResponseEntryStepId(undefined);
       setFeedback(
-        body.action === "record-desk-response" && getCaseWorkflowDefinition(result.caseSnapshot) && unmatchedResponse(result.caseSnapshot, getCaseWorkflowDefinition(result.caseSnapshot)!)
+        body.action === "reply" && result.caseSnapshot.nodes.some((node: {id: string; state: string}) => node.id === "case-done" && node.state === "done")
+          ? ""
+          : body.action === "record-desk-response" && getCaseWorkflowDefinition(result.caseSnapshot) && unmatchedResponse(result.caseSnapshot, getCaseWorkflowDefinition(result.caseSnapshot)!)
           ? (locale === "hi" ? "जवाब सुरक्षित है। मार्गदर्शन रुका है।" : "Response saved. Guidance is paused.")
           : transitionFeedback(result.reply, actedStepId, result.caseSnapshot)
       );
@@ -513,10 +519,11 @@ export function HomeContent() {
     actionHeading.current?.scrollIntoView?.({ block: "start" });
   }, [current?.id, caseId, unmatched?.recordedAt]);
   /** The feedback form rates the step just acted on, which is not the step now shown above it. */
+  const feedbackStepId = reportStepId ?? caseSnapshot?.reports?.at(-1)?.stepId ?? caseSnapshot?.nodes.findLast((node) => node.state === "done" && node.id !== "case-done")?.id;
   const reportStepTitle =
-    workflow && reportStepId
+    workflow && feedbackStepId
       ? (() => {
-          const node = workflow.nodes.find((item) => item.id === reportStepId);
+          const node = workflow.nodes.find((item) => item.id === feedbackStepId);
           return node ? translate(node.title, locale) : undefined;
         })()
       : undefined;
@@ -543,7 +550,7 @@ export function HomeContent() {
   const helpQuestions = unmatched
     ? (locale === "hi" ? ["मेरे दर्ज जवाब का मतलब समझाएँ", "क्या यह यात्रा अभी मेरी समस्या पर लागू होती है?"] : ["Explain the answer I recorded", "Does this journey still fit my situation?"])
     : current?.id === "pfms-trace"
-    ? (locale === "hi" ? ["PFMS क्या है?", "मुझे आवेदन ID नहीं पता", "वेबसाइट नहीं खुल रही"] : ["What is PFMS?", "I don’t know my application ID", "The website isn’t opening"])
+    ? (locale === "hi" ? ["PFMS क्या है?", "सत्यापन पूरा नहीं हो रहा", "वेबसाइट नहीं खुल रही"] : ["What is PFMS?", "I can’t complete verification", "The website isn’t opening"])
     : (locale === "hi" ? ["यह कदम आसान भाषा में समझाएँ", "मुझे क्या साथ ले जाना है?"] : ["Explain this step simply", "What should I take with me?"]);
   const actionTitle = current ? translate(current.title, locale) : "";
   const actionDetail = current ? translate(current.detail, locale) : "";
@@ -559,7 +566,7 @@ export function HomeContent() {
         .join(". ")
     : "";
 
-  const documentsPanel = useRef<HTMLDetailsElement>(null);
+  const documentsPanel = useRef<HTMLDivElement>(null);
   const artifactPanel =
     caseId && caseSnapshot && caseSnapshot.artifacts.length > 0 ? (
       <JourneyArtifacts
@@ -597,7 +604,8 @@ export function HomeContent() {
         >
           {common("brand")}
         </button>
-        <div className="flex items-center gap-[10px]">
+        <div className="flex flex-wrap items-center justify-end gap-x-[10px] gap-y-1">
+          <DemoDetails locale={locale} />
           <LanguageSwitcher />
           <button
             className="inline-flex min-h-11 items-center border-0 bg-transparent px-1 text-[.82rem] font-bold text-[var(--green)]"
@@ -693,11 +701,25 @@ export function HomeContent() {
                     className="my-3 min-h-11 rounded-xl bg-[var(--green)] px-4 py-3 font-bold text-white"
                     onClick={() => {
                       if (!documentsPanel.current) return;
-                      documentsPanel.current.open = true;
-                      documentsPanel.current.querySelector("summary")?.focus();
+                      const draft = documentsPanel.current.querySelector<HTMLDetailsElement>('[data-artifact="escalation-draft"]');
+                      if (draft) draft.open = true;
+                      draft?.querySelector("summary")?.focus();
                       documentsPanel.current.scrollIntoView({ block: "start" });
                     }}
                   >{locale === "hi" ? "शिकायत का मसौदा तैयार करें" : "Prepare my grievance"}</button>}
+                  {unmatched && workflow && <PausedResponseHelp key={`${unmatched.recordedAt}-${locale}`} caseId={caseId} snapshot={caseSnapshot} definition={workflow} locale={locale} onSaved={setCaseSnapshot} onRecord={() => setResponseEntryStepId(current.id)} />}
+                  {current.link && (
+                    <div className="my-4 divide-y divide-[var(--line)] border-y border-[var(--line)]">
+                      <details className="text-sm text-[#536059]">
+                        <summary className={DISCLOSURE_SUMMARY}>{locale === "hi" ? "वेबसाइट पर कैसे जाँचें" : "How to check online"}</summary>
+                        <p className="pb-3 leading-relaxed">{actionDetail}</p>
+                      </details>
+                      {current.visit && <details className="text-sm text-[#536059]">
+                        <summary className={DISCLOSURE_SUMMARY}>{locale === "hi" ? "ऑनलाइन नहीं हो रहा? यहाँ मदद लें" : "Can’t check online? Get help in person"}</summary>
+                        <div className="pb-3"><VisitCard node={current} locale={locale} /></div>
+                      </details>}
+                    </div>
+                  )}
                   {current.report ? (
                     responseEntryStepId !== current.id ? (
                       <div className="my-4 print:hidden">
@@ -708,7 +730,7 @@ export function HomeContent() {
                         >
                           {unmatched
                             ? (locale === "hi" ? "नया जवाब या सुधार दर्ज करें" : "Record a new answer or correction")
-                            : (locale === "hi" ? "मेरे पास दर्ज करने के लिए जवाब है" : "I have a response to record")}
+                            : (locale === "hi" ? "मिला हुआ जवाब दर्ज करें" : "Record the response")}
                         </button>
                       </div>
                     ) : (
@@ -753,14 +775,8 @@ export function HomeContent() {
                       </button>
                     </div>
                   )}
-                  {current.link && <details className="mt-3 text-sm text-[#536059]"><summary className="min-h-11 cursor-pointer py-3 font-semibold">{locale === "hi" ? "पूरी जानकारी और पेज न चले तो क्या करें" : "Full instructions and if the page doesn’t work"}</summary><p className="pb-3 leading-relaxed">{actionDetail}</p></details>}
-                  {current.link && current.visit ? (
-                    <details className="mt-5 rounded-xl bg-[#f4f2eb] px-4">
-                      <summary className="cursor-pointer py-4 text-sm font-semibold text-[var(--green)]">{locale === "hi" ? "जानकारी नहीं है या मदद चाहिए? डेस्क पर क्या पूछें" : "Missing details or need help? Prepare for the desk"}</summary>
-                      <div className="pb-4"><VisitCard node={current} locale={locale} /></div>
-                    </details>
-                  ) : <VisitCard node={current} locale={locale} />}
-          {current && (
+                  {!current.link && <VisitCard node={current} locale={locale} />}
+          {current && !unmatched && (
             <section className="mt-6 border-t border-[var(--line)] pt-5 print:hidden" aria-label={locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}>
               <h3 className="text-lg font-bold">{locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}</h3>
 
@@ -807,8 +823,8 @@ export function HomeContent() {
             </section>
           )}
 
-                  <details className="mt-4 border-t border-[var(--line)] pt-2 text-sm">
-                    <summary className="min-h-11 cursor-pointer py-3 font-medium text-[#65716b]">{locale === "hi" ? "यह कदम सहेजें या साझा करें" : "Save or share this step"}</summary>
+                  <details className="mt-4 border-t border-[var(--line)] text-sm">
+                    <summary className={DISCLOSURE_SUMMARY}>{locale === "hi" ? "यह कदम सहेजें या साझा करें" : "Save or share this step"}</summary>
                     <p className="mb-2 text-sm text-[#65716b]">{locale === "hi" ? "अपने पास रखने के लिए इस कदम की तैयारी की कॉपी लें।" : "Take a copy of these instructions to use away from Sahayak."}</p>
                     <div className="flex flex-wrap gap-3">
                       <button ref={briefButton} type="button" className="min-h-11 rounded-lg border border-[var(--green)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("preview")}>{locale === "hi" ? "देखें / प्रिंट करें" : "Preview / print brief"}</button>
@@ -816,10 +832,6 @@ export function HomeContent() {
                       <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("download")}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "फ़ाइल डाउनलोड करें" : "Download instructions")}</button>
                     </div>
                   </details>
-                  {artifactPanel && <details ref={documentsPanel} className="mt-4 border-t border-[var(--line)] pt-2">
-                    <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-[var(--green)]">{locale === "hi" ? "दस्तावेज़ और मसौदे" : "Documents and drafts"} · {caseSnapshot.artifacts.length}</summary>
-                    {artifactPanel}
-                  </details>}
                 </>
               ) : waiting ? (
                 <p
@@ -833,10 +845,13 @@ export function HomeContent() {
                   </em>
                 </p>
               ) : (
-                <p className="m-0 font-bold">{text("case.allDone")}</p>
+                <div>
+                  <p className="m-0 font-bold">{text("case.allDone")}</p>
+                  {caseId && <a href={caseCardHref(caseId)} className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-[var(--green)] px-4 py-3 font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--green)]">{text("case.openCaseCard")} →</a>}
+                </div>
               )}
 
-              {!current && artifactPanel}
+
 
               {feedback && (
                 <p
@@ -861,25 +876,27 @@ export function HomeContent() {
               )}
             </section>
 
-              {caseId && reportStepId && (
-                <details className="mt-5 border-t border-[var(--line)] pt-4">
-                  <summary className="min-h-11 cursor-pointer text-sm font-semibold text-[#536059]">{locale === "hi" ? "पिछले कदम पर जानकारी दें" : "Feedback on the previous step"}</summary>
+              {artifactPanel && <div ref={documentsPanel} className="mt-5">{artifactPanel}</div>}
+
+              {caseId && feedbackStepId && !resolved && feedbackStepId !== "case-done" && (
+                <details className="mt-3 border-b border-[var(--line)]">
+                  <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-[#536059]">{locale === "hi" ? "पिछले कदम पर जानकारी दें" : "Feedback on the previous step"}</summary>
                 <StepOutcomeForm
-                  key={`${reportStepId}-${caseSnapshot.nodes.find((node) => node.id === reportStepId)?.state}`}
+                  key={`${feedbackStepId}-${caseSnapshot.nodes.find((node) => node.id === feedbackStepId)?.state}`}
                   completed={
-                    caseSnapshot.nodes.find((node) => node.id === reportStepId)
+                    caseSnapshot.nodes.find((node) => node.id === feedbackStepId)
                       ?.state === "done"
                   }
                   caseId={caseId}
-                  stepId={reportStepId}
+                  stepId={feedbackStepId}
                   stepTitle={reportStepTitle}
                   locale={locale}
                 />
                 </details>
               )}
 
-            <details className="mt-6 border-t border-[var(--line)] pt-4">
-            <summary className="min-h-11 cursor-pointer font-semibold text-[var(--green)]">{text("case.history")}</summary>
+            <details className="mt-3 border-b border-[var(--line)]">
+            <summary className={DISCLOSURE_SUMMARY}>{locale === "hi" ? "आपके कदम" : "Your steps"} · {caseSnapshot.nodes.filter(node => node.state === "done").length}/{caseSnapshot.nodes.length} {locale === "hi" ? "पूरे" : "done"}</summary>
             <ol className="m-[22px_0px_0px] list-none p-0">
               {caseSnapshot.nodes.map((node) => {
                 const definition = workflow.nodes.find(
@@ -935,9 +952,10 @@ export function HomeContent() {
             </ol>
             </details>
 
-            {caseId && (
+            <nav aria-label={locale === "hi" ? "केस के विकल्प" : "Case actions"} className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            {caseId && (current || waiting) && (
               <a
-                className="mt-4 inline-flex min-h-11 items-center font-semibold text-[var(--green)] underline underline-offset-4"
+                className="inline-flex min-h-11 items-center rounded-lg border border-[var(--line)] bg-white px-4 text-sm font-semibold text-[var(--green)] hover:bg-[#edf4ee] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)]"
                 href={caseCardHref(caseId)}
               >
                 {text("case.openCaseCard")}
@@ -945,18 +963,19 @@ export function HomeContent() {
             )}
 
             <button
-              className="mt-3 block min-h-11 text-sm font-medium text-[#65716b] underline underline-offset-4"
+              className="ml-auto min-h-11 px-2 text-sm font-medium text-[#65716b] hover:text-[var(--green)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--green)]"
               type="button"
               onClick={resetDemo}
             >
               {text("case.startOver")}
             </button>
+            </nav>
           </section>
 
 
         </>
       )}
-      <footer className="mt-10 border-t border-[var(--line)] pt-4">
+      <footer className="mt-6 border-t border-[var(--line)] pt-2">
         <a href="/about" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--green)] underline underline-offset-4">
           {locale === "hi" ? "सहायक के बारे में" : "About Sahayak"}
         </a>

@@ -1,5 +1,6 @@
 "use client";
 
+import { demoProfile } from "@/lib/demo-profile";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,6 +135,11 @@ export function ArtifactDraftPanel({
     <h4 className="m-0 text-lg font-extrabold">{text.heading}</h4>
     <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[#536059]">{text.intro}</p>
     <p className="mt-2 max-w-2xl text-xs font-bold leading-relaxed text-[#735c37]">{text.privacy}</p>
+
+    {!fields.applicantName.trim() && <button type="button" disabled={Boolean(busy)} onClick={() => {
+      setFields(current => current.applicantName.trim() ? current : {...current, applicantName: demoProfile.name[locale]});
+      setSaved(false);
+    }} className="mt-3 min-h-11 text-sm font-semibold text-[var(--green)] underline disabled:opacity-50">{locale === "hi" ? "डेमो नाम इस्तेमाल करें" : "Use demo name"}</button>}
 
     <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={generate}>
       {artifactInputDefinitions["escalation-draft"].map((definition) => <Label className={definition.id === "destination" ? "grid gap-1.5 text-sm font-extrabold sm:col-span-2" : "grid gap-1.5 text-sm font-extrabold"} key={definition.id}>

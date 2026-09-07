@@ -326,6 +326,10 @@ export default function CaseCardPage({
         </div>
       </div>
 
+      {!!snapshot.clarificationNotes?.length && <section className="mb-4 rounded-xl border border-[var(--line)] p-4">
+        <h2 className="font-bold">{locale === "hi" ? "आपके रखे सवाल — आधिकारिक निर्देश नहीं" : "Questions you kept — not official guidance"}</h2>
+        {snapshot.clarificationNotes.map(note => <p key={note.savedAt} className="mt-2 whitespace-pre-wrap text-sm">{note.text}<small className="block text-[#65716b]">{note.savedAt}</small></p>)}
+      </section>}
       <article className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[#fffdf9] shadow-[0_14px_40px_rgba(52,43,27,0.07)] print:border-0 print:shadow-none">
         <header className="border-b border-[var(--line)] px-5 py-6 sm:px-7">
           <p className="m-0 text-[.7rem] font-extrabold uppercase tracking-[.14em] text-[var(--green)]">

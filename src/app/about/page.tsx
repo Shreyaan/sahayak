@@ -25,6 +25,10 @@ export default async function AboutPage() {
           <p className={label}>{text.label}</p>
           <h1 id="about-title" className="mt-5 whitespace-pre-line text-4xl font-bold leading-[1.12] tracking-tight text-[var(--ink)] sm:text-6xl">{text.title}</h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-[#536059]">{text.intro}</p>
+          <aside className="mt-5 max-w-2xl border-l-2 border-[var(--green)] pl-4">
+            <p className="font-semibold text-[var(--green)]">{text.hostingTitle}</p>
+            <p className="mt-1 text-sm leading-relaxed text-[#536059]">{text.hostingBody}</p>
+          </aside>
           <Link href="/" className={`${action} mt-7`}>{text.try} <span aria-hidden="true" className="ml-3">→</span></Link>
         </section>
 

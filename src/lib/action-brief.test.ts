@@ -24,5 +24,14 @@ test("the portable brief uses the UI language for preparation and the actual lat
   expect(hindi).not.toContain("Workflow version");
   expect(hindi).not.toContain("यात्रा संस्करण");
   expect(hindi).toContain("Demo: desk asked for a mapping check");
-  expect(brief).toContain("not a government submission");
+
+});
+
+test("a kept clarification stays separate from actual desk evidence in the brief", () => {
+  const snapshot = startCase("scholarship");
+  snapshot.clarificationNotes = [{text: "Does April apply to my existing payment?", reportRecordedAt: "2026-09-08T10:00:00Z", savedAt: "2026-09-08T10:05:00Z"}];
+  const brief = buildActionBrief(snapshot, workflows.scholarship, trust, "en");
+  expect(brief).toContain("Questions you kept — not official guidance");
+  expect(brief).toContain("Does April apply");
+  expect(brief).not.toContain("Last response you recorded");
 });
