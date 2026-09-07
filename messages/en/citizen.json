@@ -4,15 +4,15 @@
     "citizen": "Citizen"
   },
   "intro": {
-    "heading": "Which task is stuck?",
-    "lead": "Know where to go, what to ask, and what proof to bring back."
+    "heading": "Government work stuck?",
+    "lead": "Know your next step, and what to do if it doesn’t work."
   },
   "home": {
-    "eyebrow": "Government work, in one conversation",
+    "eyebrow": "Know where to go. Know what to ask.",
     "search": {
       "eyebrow": "Find the right journey",
-      "title": "Tell us what is stuck",
-      "copy": "Use your own words. Sahayak will only suggest a published journey when the match is safe."
+      "title": "What do you need help with?",
+      "copy": "Choose an example or tell us in your own words. We’ll help you find the next step."
     },
     "location": {
       "title": "Your location",
@@ -26,7 +26,7 @@
       "eyebrow": "Your saved work",
       "open": "Current and open cases",
       "past": "Past cases",
-      "openEmpty": "No open case yet. Search or choose a published journey to begin.",
+      "openEmpty": "No saved case yet. Describe your problem above to begin.",
       "pastEmpty": "Completed cases will stay here so you can return to their evidence.",
       "current": "Next action",
       "progress": "{completed} of {total} actions done",
@@ -34,15 +34,14 @@
       "resume": "Continue case"
     },
     "library": {
-      "eyebrow": "Workflow library",
-      "title": "Published journeys",
+      "eyebrow": "More ways we can help",
+      "title": "Problems we can help with",
       "copy": "Choose a supported problem. Each journey keeps your next action and recorded responses together.",
-      "count": "{count} published",
-      "loading": "Loading published journeys…",
-
+      "count": "{count} available",
+      "loading": "Loading available help…",
       "steps": "{count} actions",
       "start": "Start journey",
-      "error": "The published workflow library is unavailable right now."
+      "error": "Could not load these options. Please try again."
     },
     "ai": {
       "title": "Use Sahayak with your AI",

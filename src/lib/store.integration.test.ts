@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import { citizenCasesTable } from "@/db/schema";
 import { postgresStore } from "./store";
-import { applyCitizenReply, recordDeskReport, startCase } from "./workflow";
+import { applyIntent, recordDeskReport, startCase } from "./workflow";
 
 test("PostgreSQL never acknowledges an overwritten concurrent report", async () => {
   const id = `synthetic-concurrency-${crypto.randomUUID()}`;
-  const original = applyCitizenReply(startCase("scholarship"), "yes").caseSnapshot;
+  const original = applyIntent(startCase("scholarship"), "affirmative").caseSnapshot;
   await postgresStore.saveCase(id, original, "synthetic-owner");
   try {
     const results = await Promise.allSettled(Array.from({ length: 8 }, async (_, index) => {

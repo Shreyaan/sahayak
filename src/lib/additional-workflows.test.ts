@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { applyCitizenReply, currentNode, getWorkflowDefinition, recordDeskReport, startCase, workflowDefinitionSchema, type CaseSnapshot } from './workflow';
+import { applyIntent, currentNode, getWorkflowDefinition, recordDeskReport, startCase, workflowDefinitionSchema, type CaseSnapshot } from './workflow';
 
 function report(snapshot: CaseSnapshot, optionId: string) {
   return recordDeskReport(snapshot, { optionId, response: 'SYNTHETIC verification response', referenceNumber: `SYN-${optionId}`, responseDate: '2026-09-06', recordedAt: '2026-09-06T12:00:00Z' }).caseSnapshot;
@@ -19,11 +19,11 @@ test('Punjab certificate remains unresolved through support and a failed downloa
   snapshot = report(snapshot, 'waiting');
   expect(currentNode(snapshot)?.id).toBe('punjab-follow-up');
   snapshot = report(snapshot, 'issued');
-  snapshot = applyCitizenReply(snapshot, 'no').caseSnapshot;
+  snapshot = applyIntent(snapshot, 'negative').caseSnapshot;
   expect(currentNode(snapshot)?.id).toBe('punjab-support');
   expect(snapshot.nodes.filter(n => n.state === 'needs-you')).toHaveLength(1);
   snapshot = report(snapshot, 'issued');
-  snapshot = applyCitizenReply(snapshot, 'yes').caseSnapshot;
+  snapshot = applyIntent(snapshot, 'affirmative').caseSnapshot;
   expect(currentNode(snapshot)?.id).toBe('case-done');
   expect(snapshot.nodes.find(n => n.id === 'punjab-status')?.state).toBe('done');
   expect(snapshot.reports).toHaveLength(6);
@@ -37,11 +37,11 @@ test('Aadhaar rejection stays unresolved through a help acknowledgement and supp
   expect(currentNode(snapshot)?.id).toBe('aadhaar-help');
   snapshot = report(snapshot, 'guidance-received');
   expect(snapshot.nodes.find(n => n.id === 'aadhaar-status')?.state).toBe('blocked');
-  snapshot = applyCitizenReply(snapshot, 'no').caseSnapshot;
+  snapshot = applyIntent(snapshot, 'negative').caseSnapshot;
   expect(snapshot.nodes.filter(n => n.state === 'needs-you')).toHaveLength(1);
   expect(currentNode(snapshot)?.id).toBe('aadhaar-help');
   snapshot = report(snapshot, 'guidance-received');
-  snapshot = applyCitizenReply(snapshot, 'yes').caseSnapshot;
+  snapshot = applyIntent(snapshot, 'affirmative').caseSnapshot;
   expect(snapshot.nodes.find(n => n.id === 'aadhaar-status')?.state).toBe('done');
   expect(currentNode(snapshot)?.id).toBe('case-done');
   expect(snapshot.reports).toHaveLength(3);
@@ -61,7 +61,7 @@ test('EPFO grievance registration cannot mark a pending claim paid', () => {
   expect(currentNode(snapshot)?.id).toBe('epfo-follow-up');
   expect(snapshot.nodes.find(n => n.id === 'epfo-status')?.state).toBe('blocked');
   snapshot = report(snapshot, 'credited');
-  snapshot = applyCitizenReply(snapshot, 'yes').caseSnapshot;
+  snapshot = applyIntent(snapshot, 'affirmative').caseSnapshot;
   expect(currentNode(snapshot)?.id).toBe('case-done');
   expect(snapshot.nodes.find(n => n.id === 'epfo-status')?.state).toBe('done');
   expect(snapshot.reports).toHaveLength(5);

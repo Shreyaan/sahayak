@@ -339,7 +339,7 @@ test("the brand returns to the catalogue from an open case and clears its id fro
   fireEvent.click(screen.getByRole("button", { name: /^Sahayak/ }));
 
   expect(
-    await screen.findByRole("heading", { name: "Which task is stuck?" })
+    await screen.findByRole("heading", { name: "Government work stuck?" })
   ).not.toBeNull();
   await waitFor(() =>
     expect(updates.at(-1)?.searchParams.get("caseId")).toBeNull()
@@ -357,6 +357,41 @@ test("the brand also leaves contributor mode", async () => {
   fireEvent.click(screen.getByRole("button", { name: /^Sahayak/ }));
 
   expect(
-    await screen.findByRole("heading", { name: "Which task is stuck?" })
+    await screen.findByRole("heading", { name: "Government work stuck?" })
   ).not.toBeNull();
+});
+
+test("common questions use contextual help and leave the case on the same action", async () => {
+  mockCaseApi();
+  const original = globalThis.fetch;
+  let sent: Record<string, unknown> = {};
+  globalThis.fetch = mock((input: any, init?: RequestInit) => {
+    if (input === "/api/chat") {
+      sent = JSON.parse(String(init?.body));
+      return Promise.resolve(response({ reply: "Ask your institution's scholarship desk for help.", caseSnapshot: snapshot }));
+    }
+    return original(input, init);
+  }) as unknown as typeof fetch;
+  renderHome({ searchParams: `?caseId=${caseId}` });
+  fireEvent.click(await screen.findByRole("button", { name: "I don’t know my application ID" }));
+  await screen.findByText("Ask your institution's scholarship desk for help.");
+  expect(sent.action).toBe("help");
+  expect(sent.message).toContain("application ID");
+  expect(screen.getByRole("heading", { name: "Check where your scholarship payment is stuck" })).not.toBeNull();
+});
+
+test("a slow help reply cannot erase the next question being typed", async () => {
+  mockCaseApi();
+  const original = globalThis.fetch;
+  let finish!: (response: Response) => void;
+  globalThis.fetch = mock((input: string | URL | Request, init?: RequestInit) => input === "/api/chat"
+    ? new Promise<Response>(resolve => { finish = resolve; }) : original(input, init)) as unknown as typeof fetch;
+  renderHome({searchParams: `?caseId=${caseId}`});
+  const input = await screen.findByRole("textbox", {name:"Ask Sahayak a question"});
+  fireEvent.change(input, {target:{value:"What is PFMS?"}});
+  fireEvent.click(screen.getByRole("button", {name:/^Ask$/}));
+  fireEvent.change(input, {target:{value:"Where can I find my application ID?"}});
+  finish(response({reply:"PFMS shows payment information.", caseSnapshot:snapshot}));
+  await screen.findByText("PFMS shows payment information.");
+  expect((input as HTMLTextAreaElement).value).toBe("Where can I find my application ID?");
 });

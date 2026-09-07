@@ -4,6 +4,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { useQueryState } from "nuqs";
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import { t as translate, tList, type Locale } from "@/lib/locale";
+import { recoveryContext } from "@/lib/recovery-context";
+import { ActionBriefPreview } from "./action-brief-preview";
 import { stopMediaStream } from "@/lib/media";
 import {
   getCaseWorkflowDefinition,
@@ -126,6 +128,7 @@ export function HomeContent() {
   const [feedback, setFeedback] = useState("");
   const [responseEntryStepId, setResponseEntryStepId] = useState<string>();
   const [briefPending, setBriefPending] = useState(false);
+  const [briefPreview, setBriefPreview] = useState<string>();
   const [canShare, setCanShare] = useState(false);
   const [reportStepId, setReportStepId] = useState<string>();
   const [answer, setAnswer] = useState("");
@@ -135,6 +138,7 @@ export function HomeContent() {
   const [recording, setRecording] = useState(false);
   const [resumeAttempt, setResumeAttempt] = useState(0);
   const actionHeading = useRef<HTMLHeadingElement>(null);
+  const briefButton = useRef<HTMLButtonElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
   const recordingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -250,6 +254,12 @@ export function HomeContent() {
         setChatTurns(turns => [...turns, { role: "user", content: String(body.message) }, { role: "assistant", content: result.reply }].slice(-8) as typeof turns);
         return true;
       }
+      const nextStepId = result.caseSnapshot.nodes.find((node: { id: string; state: string }) => node.state === "needs-you")?.id;
+      if (nextStepId !== actedStepId) {
+        setChatTurns([]);
+        setChatError("");
+        setAnswer("");
+      }
       setCaseSnapshot(result.caseSnapshot);
       setFeedback(
         transitionFeedback(result.reply, actedStepId, result.caseSnapshot)
@@ -275,15 +285,19 @@ export function HomeContent() {
     return ask({ action: "reply", intent });
   }
 
-  function send(event: FormEvent) {
-    event.preventDefault();
-    const value = answer.trim();
-    if (!value) return;
-
+  function askQuestion(question: string) {
+    const value = question.trim();
+    if (!value || busy) return;
+    setAnswer(value);
     setChatError("");
     void ask({ action: "help", message: value, conversation: chatTurns }).then((saved) => {
-      if (saved) setAnswer("");
+      if (saved) setAnswer(current => current === value ? "" : current);
     });
+  }
+
+  function send(event: FormEvent) {
+    event.preventDefault();
+    askQuestion(answer);
   }
 
   /** Opens a case, whether it came from the server or locally. */
@@ -439,7 +453,7 @@ export function HomeContent() {
    * wherever the browser supports it. The file stays available beside it
    * rather than being chosen for the citizen by guessing at their device.
    */
-  async function keepNextStep(mode: "share" | "download") {
+  async function keepNextStep(mode: "share" | "download" | "preview") {
     if (!caseId || briefPending) return;
     setBriefPending(true);
     try {
@@ -448,6 +462,7 @@ export function HomeContent() {
       );
       if (!response.ok) throw new Error("BRIEF_UNAVAILABLE");
       const text = await response.text();
+      if (mode === "preview") { setBriefPreview(text); return; }
 
       if (
         mode === "share" &&
@@ -529,6 +544,10 @@ export function HomeContent() {
 
   // Speech must never repeat itself: skip the title and detail when the
   // question already carries them.
+  const recovery = caseSnapshot && workflow ? recoveryContext(caseSnapshot, workflow) : undefined;
+  const helpQuestions = current?.id === "pfms-trace"
+    ? (locale === "hi" ? ["PFMS क्या है?", "मुझे आवेदन ID नहीं पता", "वेबसाइट नहीं खुल रही"] : ["What is PFMS?", "I don’t know my application ID", "The website isn’t opening"])
+    : (locale === "hi" ? ["यह कदम आसान भाषा में समझाएँ", "मुझे क्या साथ ले जाना है?"] : ["Explain this step simply", "What should I take with me?"]);
   const actionTitle = current ? translate(current.title, locale) : "";
   const actionDetail = current ? translate(current.detail, locale) : "";
   const actionAsk = current ? translate(current.ask, locale) : "";
@@ -569,6 +588,7 @@ export function HomeContent() {
     <main
       className={`mx-auto min-h-screen w-full px-[18px] pt-[18px] pb-[92px] min-[760px]:pt-[30px] ${contributorMode || !caseSnapshot ? "max-w-[1180px]" : "max-w-[680px]"}`}
     >
+      {briefPreview && <ActionBriefPreview content={briefPreview} locale={locale} onClose={() => { setBriefPreview(undefined); briefButton.current?.focus(); }} />}
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <button
           className="text-[1.3rem] font-extrabold cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--ink)]"
@@ -637,12 +657,20 @@ export function HomeContent() {
                   >
                     {actionTitle}
                   </h2>
-                  {showDetail && (
+                  {recovery && <aside className="mb-4 border-l-4 border-[var(--marigold)] bg-[#fff8e8] p-3 text-sm" aria-label={locale === "hi" ? "कदम क्यों बदला" : "Why this step changed"}>
+                    <p className="font-bold">{locale === "hi" ? "आपके दर्ज जवाब के आधार पर अगला कदम बदला" : "Your recorded response changed the next step"}</p>
+                    <p className="mt-1">{translate(recovery.option.label, locale)}</p>
+                    <blockquote className="mt-2 whitespace-pre-wrap break-words">“{recovery.report.response}”</blockquote>
+                    <p className="mt-2 text-xs">{recovery.report.responseDate}{recovery.report.referenceNumber ? ` · ${recovery.report.referenceNumber}` : ""}</p>
+                    <p className="mt-2">{locale === "hi" ? "यह आपका बताया जवाब है। समस्या हल होने की पुष्टि अभी नहीं हुई है।" : "This is the response you reported. Resolution has not been confirmed."}</p>
+                  </aside>}
+                  {showDetail && !current.link && (
                     <p className="m-0 mb-4 text-base leading-relaxed text-[#5a6560]">
                       {actionDetail}
                     </p>
                   )}
                   {!current.report && <p className="m-0 mb-4 text-base font-semibold leading-relaxed">{actionAsk}</p>}
+                  {current.link && <p className="mb-4 text-base leading-relaxed text-[#536059]">{translate(current.detail, locale).split(/(?<=[.!?।])\s+/u).slice(0, 2).join(" ")}</p>}
                   {current.link && (
                     <p className="m-0 mb-3.5 grid gap-1">
                       <a
@@ -658,12 +686,59 @@ export function HomeContent() {
                       </small>
                     </p>
                   )}
+                  {current.link && <details className="mt-3 text-sm text-[#536059]"><summary className="min-h-11 cursor-pointer py-3 font-semibold">{locale === "hi" ? "पूरी जानकारी और पेज न चले तो क्या करें" : "Full instructions and if the page doesn’t work"}</summary><p className="pb-3 leading-relaxed">{actionDetail}</p></details>}
                   {current.link && current.visit ? (
                     <details className="mt-5 rounded-xl bg-[#f4f2eb] px-4">
-                      <summary className="cursor-pointer py-4 text-sm font-semibold text-[var(--green)]">{translate(current.visit.office, locale)}</summary>
+                      <summary className="cursor-pointer py-4 text-sm font-semibold text-[var(--green)]">{locale === "hi" ? "जानकारी नहीं है या मदद चाहिए? डेस्क पर क्या पूछें" : "Missing details or need help? Prepare for the desk"}</summary>
                       <div className="pb-4"><VisitCard node={current} locale={locale} /></div>
                     </details>
                   ) : <VisitCard node={current} locale={locale} />}
+          {current && (
+            <section className="mt-6 border-t border-[var(--line)] pt-5" aria-label={locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}>
+              <h3 className="text-lg font-bold">{locale === "hi" ? "समझ नहीं आया? सहायक से पूछें" : "Not sure what to do? Ask Sahayak"}</h3>
+              <p className="mt-1 text-sm text-[#65716b]">{locale === "hi" ? "अपनी भाषा में लिखें या बोलें। पूछने से आपका केस आगे नहीं बढ़ेगा।" : "Type or speak in your own words. Asking does not advance your case."}</p>
+              <div className="mt-3 flex flex-wrap gap-2">{helpQuestions.map(question => <button key={question} type="button" disabled={busy} onClick={() => askQuestion(question)} className="min-h-11 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-left text-sm font-semibold text-[var(--green)] hover:bg-[#edf4ee] disabled:opacity-50">{question}</button>)}</div>
+              <div className="mt-3 grid gap-3" role="log" aria-live="polite">
+                {chatTurns.map((turn, index) => <div key={index} className={turn.role === "assistant" ? "rounded-xl bg-[#edf4ee] p-3 text-sm leading-relaxed whitespace-pre-wrap" : "ml-6 text-sm text-[#536059] whitespace-pre-wrap"}>
+                  <strong className="mb-1 block">{turn.role === "assistant" ? (locale === "hi" ? "सहायक" : "Sahayak") : (locale === "hi" ? "आप" : "You")}</strong>{turn.content}
+                  {turn.role === "assistant" && <button type="button" className="mt-2 block min-h-11 font-semibold text-[var(--green)]" onClick={() => void speak(turn.content)}>{locale === "hi" ? "जवाब सुनें" : "Listen to answer"}</button>}
+                </div>)}
+                {chatError && <p role="alert" className="text-sm text-[#8b2e24]">{chatError}</p>}
+              </div>
+            <form
+              className="mt-5 flex items-end gap-2 border-t border-[var(--line)] pt-4"
+              onSubmit={send}
+            >
+              <button
+                className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
+                type="button"
+                onClick={toggleRecording}
+                aria-label={
+                  recording ? text("chat.recordStop") : text("chat.recordStart")
+                }
+              >
+                {recording ? "■" : "●"}
+              </button>
+              <textarea
+                className="w-full min-w-0 resize-none rounded-lg border border-[var(--line)] bg-white p-2.5 [font:inherit]"
+                aria-label={locale === "hi" ? "सहायक से अपना सवाल पूछें" : "Ask Sahayak a question"}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                placeholder={locale === "hi" ? "इस कदम के बारे में पूछें…" : "Ask about this step…"}
+                rows={2}
+                maxLength={2_000}
+              />
+              <button
+                className="shrink-0 min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55"
+                disabled={busy || !answer.trim()}
+                type="submit"
+              >
+                {busy ? (locale === "hi" ? "पूछ रहे हैं…" : "Asking…") : (locale === "hi" ? "पूछें" : "Ask")}
+              </button>
+            </form>
+              <p className="mt-2 text-xs text-[#65716b]">{locale === "hi" ? "AI से समझने में मदद लें। यह बातचीत नया कदम खुलने या रीलोड पर मिट जाती है; ज़रूरी जवाब केस में दर्ज करें।" : "AI helps explain. This chat clears on a new step or reload; record important responses in your case."}</p>
+            </section>
+          )}
                   {current.report && artifactPanel}
                   {current.report ? (
                     responseEntryStepId !== current.id ? (
@@ -726,55 +801,11 @@ export function HomeContent() {
                       </button>
                     </div>
                   )}
-          {current && (
-            <section className="mt-6 border-t border-[var(--line)] pt-5" aria-label={locale === "hi" ? "सहायक से पूछें" : "Ask Sahayak"}>
-              <h3 className="text-lg font-bold">{locale === "hi" ? "समझ नहीं आया? सहायक से पूछें" : "Not sure what to do? Ask Sahayak"}</h3>
-              <p className="mt-1 text-sm text-[#65716b]">{locale === "hi" ? "अपनी भाषा में लिखें या बोलें। पूछने से आपका केस आगे नहीं बढ़ेगा।" : "Type or speak in your own words. Asking does not advance your case."}</p>
-              <div className="mt-3 grid gap-3" role="log" aria-live="polite">
-                {chatTurns.map((turn, index) => <div key={index} className={turn.role === "assistant" ? "rounded-xl bg-[#edf4ee] p-3 text-sm leading-relaxed whitespace-pre-wrap" : "ml-6 text-sm text-[#536059] whitespace-pre-wrap"}>
-                  <strong className="mb-1 block">{turn.role === "assistant" ? (locale === "hi" ? "सहायक" : "Sahayak") : (locale === "hi" ? "आप" : "You")}</strong>{turn.content}
-                  {turn.role === "assistant" && <button type="button" className="mt-2 block min-h-11 font-semibold text-[var(--green)]" onClick={() => void speak(turn.content)}>{locale === "hi" ? "जवाब सुनें" : "Listen to answer"}</button>}
-                </div>)}
-                {chatError && <p role="alert" className="text-sm text-[#8b2e24]">{chatError}</p>}
-              </div>
-            <form
-              className="mt-5 flex items-end gap-2 border-t border-[var(--line)] pt-4"
-              onSubmit={send}
-            >
-              <button
-                className={`h-[42px] w-[42px] shrink-0 rounded-xl border-0 font-extrabold ${recording ? "bg-[#8b2e24] text-white" : "bg-[#eee5d8] text-[var(--green)]"}`}
-                type="button"
-                onClick={toggleRecording}
-                aria-label={
-                  recording ? text("chat.recordStop") : text("chat.recordStart")
-                }
-              >
-                {recording ? "■" : "●"}
-              </button>
-              <textarea
-                className="w-full min-w-0 resize-none border-0 bg-transparent p-2.5 outline-0 [font:inherit]"
-                aria-label={locale === "hi" ? "सहायक से अपना सवाल पूछें" : "Ask Sahayak a question"}
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                placeholder={locale === "hi" ? "जैसे: PFMS क्या है? आवेदन नंबर कहाँ मिलेगा?" : "For example: What is PFMS? Where do I find my application number?"}
-                rows={2}
-                maxLength={2_000}
-              />
-              <button
-                className="shrink-0 min-w-[72px] min-h-11 rounded-xl border-0 bg-[var(--marigold)] px-3.5 py-2.5 font-extrabold text-[#2f250f] disabled:cursor-wait disabled:opacity-55"
-                disabled={busy || !answer.trim()}
-                type="submit"
-              >
-                {busy ? (locale === "hi" ? "पूछ रहे हैं…" : "Asking…") : (locale === "hi" ? "पूछें" : "Ask")}
-              </button>
-            </form>
-              <p className="mt-2 text-xs text-[#65716b]">{locale === "hi" ? "AI से समझने में मदद लें। यह बातचीत रीलोड पर मिट जाती है; ज़रूरी जवाब केस में दर्ज करें।" : "AI helps explain. This chat clears on reload; record important responses in your case."}</p>
-            </section>
-          )}
                   <details className="mt-4 border-t border-[var(--line)] pt-2 text-sm">
                     <summary className="min-h-11 cursor-pointer py-3 font-medium text-[#65716b]">{locale === "hi" ? "यह कदम सहेजें या साझा करें" : "Save or share this step"}</summary>
                     <p className="mb-2 text-sm text-[#65716b]">{locale === "hi" ? "अपने पास रखने के लिए इस कदम की तैयारी की कॉपी लें।" : "Take a copy of these instructions to use away from Sahayak."}</p>
                     <div className="flex flex-wrap gap-3">
+                      <button ref={briefButton} type="button" className="min-h-11 rounded-lg border border-[var(--green)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("preview")}>{locale === "hi" ? "दोनों भाषाओं में देखें / प्रिंट करें" : "Preview / print bilingual brief"}</button>
                       {canShare && <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("share")}>{locale === "hi" ? "साझा करें" : "Share instructions"}</button>}
                       <button type="button" className="min-h-11 rounded-lg border border-[var(--line)] px-4 font-semibold text-[var(--green)] disabled:opacity-50" disabled={briefPending} onClick={() => void keepNextStep("download")}>{briefPending ? (locale === "hi" ? "तैयार हो रहा है…" : "Preparing…") : (locale === "hi" ? "फ़ाइल डाउनलोड करें" : "Download instructions")}</button>
                     </div>
@@ -916,6 +947,11 @@ export function HomeContent() {
 
         </>
       )}
+      <footer className="mt-10 border-t border-[var(--line)] pt-4">
+        <a href="/about" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--green)] underline underline-offset-4">
+          {locale === "hi" ? "सहायक के बारे में" : "About Sahayak"}
+        </a>
+      </footer>
     </main>
   );
 }

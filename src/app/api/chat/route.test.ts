@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { resetMemoryStore, store } from "@/lib/store";
-import { compileWorkflow, type WorkflowSpec } from "@/lib/custom-workflow";
-import { applyCitizenReply, registerWorkflowDefinition, startCase } from "@/lib/workflow";
+import { compileGeneratedContribution } from "@/lib/contribution";
+import { applyIntent, registerWorkflowDefinition, startCase } from "@/lib/workflow";
 import { POST } from "./route";
 import { browserOwner } from "@/lib/browser-owner";
 
@@ -54,13 +54,15 @@ describe("POST /api/chat", () => {
     expect(body.caseSnapshot).toEqual(snapshot);
     expect(body.aiGenerated).toBe(false);
     expect(body.reply).toContain("unavailable");
+    expect(body.reply).toContain("scholarship desk");
+    expect(body.reply).toContain("NSP shows released");
   });
   test("a stale confirmation cannot answer the next step in another tab", async () => {
     resetMemoryStore();
     const token = crypto.randomUUID();
     const owner = browserOwner(ownedChatRequest({}, token));
     const fresh = startCase("bereavement");
-    const advanced = applyCitizenReply(fresh, "yes").caseSnapshot;
+    const advanced = applyIntent(fresh, "affirmative").caseSnapshot;
     await store.saveCase("stale-tab-case", advanced, owner.hash);
     const response = await POST(ownedChatRequest({ caseId: "stale-tab-case", caseSnapshot: fresh, action: "reply", intent: "affirmative" }, token));
     expect(response.status).toBe(409);
@@ -286,12 +288,14 @@ describe("POST /api/chat", () => {
   test("runs a user-added workflow through the same validation and engine", async () => {
     delete process.env.OPENROUTER_API_KEY;
 
-    const spec: WorkflowSpec = {
-      title: "Getting a ration card",
-      steps: [{ title: "Check the documents", kind: "confirm" }],
-    };
-    registerWorkflowDefinition(compileWorkflow(spec, "custom-ration-card"));
-    const snapshot = startCase("custom-ration-card");
+    const { definition } = compileGeneratedContribution({
+      title: {en: "Getting a ration card", hi: "राशन कार्ड"},
+      summary: {en: "Check documents", hi: "दस्तावेज़ जाँचें"},
+      steps: [{title: {en: "Check documents", hi: "दस्तावेज़ जाँचें"}, detail: {en: "Check your list", hi: "सूची जाँचें"}, ask: {en: "Checked?", hi: "जाँच लिया?"}, kind: "confirm"}],
+      reviewFlags: [], jurisdiction: {scope: "central", reason: {en: "Test", hi: "परीक्षण"}},
+    });
+    registerWorkflowDefinition(definition);
+    const snapshot = startCase(definition.id);
 
     const response = await POST(
       chatRequest({ action: "reply", intent: "affirmative", caseSnapshot: snapshot }),

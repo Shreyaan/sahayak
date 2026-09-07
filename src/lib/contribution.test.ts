@@ -1,90 +1,29 @@
-import { describe, expect, test } from "bun:test";
-import { compileContribution } from "./contribution";
-import { t, type Locale, type Localized } from "./locale";
+import { expect, test } from "bun:test";
+import { compileGeneratedContribution, type GeneratedContribution } from "./contribution";
 
-/** Joins a localized list into one string so a test can search it. */
-function read(values: Localized[], locale: Locale): string {
-  return values.map((value) => t(value, locale)).join(" ");
-}
+const evidence: GeneratedContribution = {
+  title: {en: "Correct a water bill", hi: "पानी का बिल सुधारें"},
+  summary: {en: "A reported billing correction", hi: "बताया गया बिल सुधार"},
+  steps: [{kind: "desk", title: {en: "Ask the water office", hi: "जल कार्यालय से पूछें"}, detail: {en: "Ask about the recorded discrepancy", hi: "दर्ज अंतर के बारे में पूछें"}, ask: {en: "What did they say?", hi: "उन्होंने क्या कहा?"}}],
+  reviewFlags: [{en: "Verify the office procedure", hi: "कार्यालय प्रक्रिया की जाँच करें"}],
+  jurisdiction: {scope: "central", reason: {en: "Needs verification", hi: "जाँच आवश्यक"}},
+};
 
-describe("compileContribution", () => {
-  test("creates a draft lived-experience contribution from bereavement input", () => {
-    const draft = compileContribution(
-      "After my father died, I took Form 4 to the bank and submitted a claim.",
-    );
+test("compiles structured evidence without copying a bundled topic or inventing desk outcomes", () => {
+  const draft = compileGeneratedContribution(evidence);
+  expect(draft.title).toEqual(evidence.title);
+  expect(draft.definition.nodes[0].detail).toEqual(evidence.steps[0].detail);
+  expect(draft.definition.nodes[0].verify).toBeUndefined();
+  expect(draft.definition.nodes[0].visit).toBeUndefined();
+  expect(draft.matches).toEqual([]);
+  expect(draft.additions).toContainEqual(evidence.reviewFlags[0]);
+  expect(draft.additions.at(-1)?.en).toContain("Expert verification");
+});
 
-    expect(draft.workflowId).toBe("bereavement");
-    expect(draft.sourceType).toBe("lived experience");
-    expect(draft.steps.length).toBeGreaterThan(0);
-    expect(draft.summary.en).not.toBe(draft.title.en);
-    expect(draft.summary.hi).not.toBe(draft.title.hi);
-  });
+test("rejects malformed model output at the compiler boundary", () => {
+  expect(() => compileGeneratedContribution({...evidence, steps: []})).toThrow();
+});
 
-  test("writes every user-facing string in both languages", () => {
-    const draft = compileContribution("The Form 4 listed Shyam Sundar as the claimant.");
-
-    expect(draft.title.hi).toContain("योगदान");
-    expect(draft.title.en).toBe("Bereavement claim contribution");
-    expect(read(draft.steps, "hi")).not.toContain("[object Object]");
-    expect(read(draft.steps, "en")).not.toContain("[object Object]");
-    expect(read(draft.matches, "hi")).not.toContain("[object Object]");
-    expect(read(draft.matches, "en")).toContain("is already part of the bundled");
-  });
-
-  test("routes a scholarship experience to the scholarship seed", () => {
-    const draft = compileContribution(
-      "NSP showed Released to PFMS but the money never arrived; the bank said NPCI seeding was missing.",
-    );
-
-    expect(draft.workflowId).toBe("scholarship");
-    expect(read(draft.matches, "hi")).toContain("बैंक से सीडिंग जाँच");
-    expect(read(draft.matches, "en")).toContain("Request a bank seeding check");
-  });
-
-  test("flags a submitted Shyam Sundar spelling against the bundled seed", () => {
-    const draft = compileContribution("The Form 4 listed Shyam Sundar as the claimant.");
-
-    expect(draft.conflicts).toContainEqual(
-      expect.objectContaining({
-        field: { hi: "नाम की वर्तनी", en: "Name spelling" },
-        submitted: { hi: "Shyam Sundar", en: "Shyam Sundar" },
-        bundled: { hi: "Shyam Sunder", en: "Shyam Sunder" },
-      }),
-    );
-  });
-
-  test("flags a contributed RTI deadline that contradicts the bundled source", () => {
-    const draft = compileContribution(
-      "For a delayed EPFO claim you can file an RTI and they must reply within 48 hours.",
-    );
-
-    expect(draft.conflicts.map((conflict) => conflict.field.en)).toContain("RTI timeline");
-    expect(draft.conflicts.map((conflict) => conflict.field.hi)).toContain("RTI समय-सीमा");
-  });
-
-  test("reports an unofficial payment as an addition needing review, not as guidance", () => {
-    const draft = compileContribution(
-      "At the office an agent asked for a ₹500 fee to move the death claim forward.",
-    );
-
-    expect(read(draft.additions, "en")).toContain("payment");
-    expect(read(draft.additions, "en")).toContain("middleman");
-    expect(read(draft.additions, "hi")).toContain("भुगतान");
-    expect(read(draft.additions, "hi")).toContain("बिचौलिया");
-  });
-
-  test("repeated previews remain independent drafts", () => {
-    const first = compileContribution("I used Form 4 for the bank claim after the death.");
-    const second = compileContribution("Form 4 was needed for my bank claim after a death too.");
-
-    expect(first).toEqual(second);
-  });
-
-  test("a draft with a conflict always needs review", () => {
-    const input = "Form 4 listed Shyam Sundar for the bank claim after the death.";
-
-    const draft = compileContribution(input);
-
-    expect(draft.conflicts.length).toBeGreaterThan(0);
-  });
+test("independent drafts have unique IDs even with identical titles", () => {
+  expect(compileGeneratedContribution(evidence).workflowId).not.toBe(compileGeneratedContribution(evidence).workflowId);
 });

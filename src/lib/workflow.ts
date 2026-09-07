@@ -1,4 +1,4 @@
-import { readIntent, type Intent } from "./intent";
+export type Intent = "affirmative" | "negative" | "unknown";
 import type { Localized } from "./locale";
 import type { ArtifactDraft } from "./artifact-drafts";
 import { z } from "zod";
@@ -1242,22 +1242,7 @@ const engineReplies = {
 
 export type EngineResult = { caseSnapshot: CaseSnapshot; reply: Localized };
 
-/**
- * Resolves a citizen reply against the current node. This is the only authority
- * for case transitions; the language model never decides one.
- */
-export function applyCitizenReply(
-  caseSnapshot: CaseSnapshot,
-  message: string
-): EngineResult {
-  return applyIntent(caseSnapshot, readIntent(message));
-}
-
-/**
- * Applies an already-read confirmation signal. The signal may come from the
- * deterministic reader or from the clerk model, but only this function decides
- * what the case does with it.
- */
+/** Applies an explicit choice; free-text questions are handled by the AI help route. */
 export function applyIntent(
   caseSnapshot: CaseSnapshot,
   intent: Intent

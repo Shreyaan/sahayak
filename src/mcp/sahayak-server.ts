@@ -33,7 +33,7 @@ export function buildSahayakMcpServer(): McpServer {
           content: [{
             type: "text",
             text: result.results.length
-              ? result.results.map((item) => `${item.title} (${item.workflowVersionId})`).join("\n")
+              ? result.results.map((item) => `${item.title} (${item.workflowVersionId})${item.requiresConfirmation ? " — related option only; ask the citizen to confirm fit before starting" : ""}`).join("\n")
               : "No safe published match. Ask the citizen for one more detail.",
           }],
           structuredContent: result,

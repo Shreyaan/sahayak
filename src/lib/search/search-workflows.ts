@@ -2,6 +2,8 @@ import { and, cosineDistance, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { searchDocumentsTable, workflowVersionsTable } from "@/db/schema";
+import { assessWorkflowFit, type AssessWorkflowFit } from "./assess-workflow-fit";
+import { workflowDefinitionSchema } from "@/lib/workflow";
 import { rankCandidates, type CandidateEvidence } from "./ranking";
 import { embedSearchQuery } from "./embeddings";
 import { parseTrustMetadata, type TrustMetadata, type WorkflowJurisdiction } from "@/lib/trust";
@@ -29,6 +31,7 @@ export type WorkflowSearchResult = {
   summary: string;
   jurisdiction: WorkflowJurisdiction;
   matchReasons: string[];
+  requiresConfirmation?: boolean;
   trust: TrustMetadata;
 };
 
@@ -43,7 +46,7 @@ export type SearchWorkflowsResponse = {
 type ScoreRow = { workflowVersionId: string; score: number };
 let warnedAboutSemanticSimilarity = false;
 
-export async function searchWorkflows(input: SearchWorkflowsInput): Promise<SearchWorkflowsResponse> {
+export async function searchWorkflows(input: SearchWorkflowsInput, assess: AssessWorkflowFit = assessWorkflowFit): Promise<SearchWorkflowsResponse> {
   const parsed = searchWorkflowsInputSchema.parse(input);
   const request = { ...parsed, query: redactCitizenText(parsed.query) };
   const db = getDatabase();
@@ -192,34 +195,15 @@ export async function searchWorkflows(input: SearchWorkflowsInput): Promise<Sear
     });
   }
 
-  // Retrieval similarity is not evidence that a citizen has this problem.
-  // Bundled synthetic journeys require an affirmative topic mention. Negated
-  // topics ("no scholarship or death claim involved") cannot authorize a start.
-  const topicText = request.query.replace(/\b(?:no|not|without)\s+(?:(?:a|any)\s+)?(?:scholar\w*|scholor\w*|death|bereavement)[^.!?;\n]*/gi, "");
-  const scholarship = /\b(?:scholar\w*|scholor\w*|nsp|pfms|student grant)\b|छात्रवृत्ति|स्कॉलरशिप|वजीफा/i.test(topicText);
-  const bereavement = /\b(?:death|died|deceased|bereavement|passed away|mrityu)\b|मृत्यु|निधन|गुज़र|गुजर/i.test(topicText);
-  const topicMatches: Record<string, boolean> = {
-    scholarship,
-    bereavement,
-    "punjab-income": /(?:income|aamdani|aay)\s+(?:certificate|certificat|praman)|आय\s*(?:प्रमाण|सर्टिफिकेट)/i.test(topicText),
-    "aadhaar-update": !scholarship && !bereavement && /\b(?:aadhaar|aadhar|adhar|uidai|myaadhaar)\b|आधार/i.test(topicText) && /update|correct|reject|अपडेट|सुधार|अस्वीकृत|रिजेक्ट/i.test(topicText),
-    "epfo-claim": !bereavement && !scholarship && /\b(?:epfo|pf|epfigms|provident fund)\b|पीएफ|भविष्य निधि/i.test(topicText) && /claim|withdraw|settled|paisa|money|payment|दाव|निकासी|पैसा|भुगतान/i.test(topicText),
-  };
-  const workflowByVersion = new Map(publishedVersions.map((version) => [version.id, version.workflowId]));
-  const ranked = rankCandidates([...evidence.values()].filter((candidate) => topicMatches[workflowByVersion.get(candidate.workflowVersionId)!] !== false));
-  if (ranked.length === 0 || ranked[0]?.ambiguousWithNext) {
-    return {
-      results: [],
-      needsLocation: false,
-      shouldClarify: true,
-    };
-  }
-
-  const selected = ranked.slice(0, request.limit);
+  const ranked = rankCandidates([...evidence.values()]);
+  if (!ranked.length) return { results: [], needsLocation: false, shouldClarify: true };
+  // Assess a bounded shortlist, then apply the caller's display limit.
+  const selected = ranked.slice(0, 8);
   const displayRows = await db
     .select({
       workflowId: workflowVersionsTable.workflowId,
       workflowVersionId: workflowVersionsTable.id,
+      definition: workflowVersionsTable.definition,
       title: searchDocumentsTable.title,
       summary: searchDocumentsTable.summary,
       scope: workflowVersionsTable.scope,
@@ -234,9 +218,18 @@ export async function searchWorkflows(input: SearchWorkflowsInput): Promise<Sear
     ))
     .where(and(published, inArray(workflowVersionsTable.id, selected.map((item) => item.workflowVersionId))));
   const byId = new Map(displayRows.map((row) => [row.workflowVersionId, row]));
+  const fit = await assess({ query: request.query, locale: request.locale, candidates: displayRows.map(row => ({
+    workflowVersionId: row.workflowVersionId, definition: workflowDefinitionSchema.parse(row.definition),
+  })) });
+  if (fit.decision === "unsupported") return { results: [], needsLocation: false, shouldClarify: false, unsupported: true };
+  if (fit.decision === "clarify") return { results: [], needsLocation: false, shouldClarify: true, clarificationQuestion: fit.question };
+  const visible = (fit.decision === "match"
+    ? selected.filter(candidate => candidate.workflowVersionId === fit.workflowVersionId)
+    : selected).slice(0, request.limit);
+
 
   return {
-    results: selected.flatMap((candidate) => {
+    results: visible.flatMap((candidate) => {
       const row = byId.get(candidate.workflowVersionId);
       if (!row) return [];
       const semantic = (candidate.semanticScore ?? 0) >= 0.55;
@@ -248,8 +241,11 @@ export async function searchWorkflows(input: SearchWorkflowsInput): Promise<Sear
         summary: row.summary,
         jurisdiction: { scope: row.scope, stateCode: row.stateCode, districtCode: row.districtCode },
         trust: parseTrustMetadata(row.trust),
+        requiresConfirmation: fit.decision !== "match",
         matchReasons: [
-          semantic
+          fit.decision !== "match"
+            ? (request.locale === "hi" ? "AI मिलान उपलब्ध नहीं है। शुरू करने से पहले जाँचें कि यह आपकी समस्या है।" : "AI matching is unavailable. Check that this describes your situation before starting.")
+            : semantic
             ? (request.locale === "hi" ? "आपकी समस्या का अर्थ इस यात्रा से मेल खाता है" : "The meaning of your problem matches this journey")
             : lexical
             ? (request.locale === "hi" ? "आपके शब्द इस यात्रा से मेल खाते हैं" : "Your words match this journey")

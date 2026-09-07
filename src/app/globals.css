@@ -181,3 +181,19 @@
     outline-offset: 3px;
   }
 }
+
+@media print {
+  body:has(dialog[data-action-brief][open]) > :not(dialog[data-action-brief]) {
+    display: none;
+  }
+  dialog[data-action-brief][open] {
+    position: static;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+}

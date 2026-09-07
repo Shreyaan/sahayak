@@ -22,6 +22,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ results: [], needsLocation: false, shouldClarify: false, unsupported: true });
     }
 
+    if (result.clarificationQuestion) return NextResponse.json(result);
+
     let clarificationQuestion: string;
     try {
       clarificationQuestion = await clarifySearch({ query: parsed.data.query, locale: parsed.data.locale });

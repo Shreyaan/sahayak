@@ -3,7 +3,7 @@ import { artifactContent, renderArtifactBody } from "./artifacts";
 import { locales, t } from "./locale";
 import {
   advanceDay,
-  applyCitizenReply,
+  applyIntent,
   recordDeskReport,
   currentNode,
   isClearedBlocker,
@@ -42,7 +42,7 @@ function confirmUntil(caseSnapshot: CaseSnapshot, nodeId: string): CaseSnapshot 
           recordedAt: "2026-09-06T10:00:00.000Z",
         }).caseSnapshot
       : open
-        ? applyCitizenReply(snapshot, "हाँ").caseSnapshot
+        ? applyIntent(snapshot, "affirmative").caseSnapshot
         : advanceDay(snapshot).caseSnapshot;
   }
 
@@ -106,7 +106,7 @@ describe("every user-facing string is bilingual", () => {
             recordedAt: "2026-09-06T10:00:00.000Z",
           })
         : open
-          ? applyCitizenReply(snapshot, "हाँ")
+          ? applyIntent(snapshot, "affirmative")
           : advanceDay(snapshot);
 
       expect(missingTranslations(result.reply, "reply")).toEqual([]);
@@ -114,7 +114,7 @@ describe("every user-facing string is bilingual", () => {
     }
 
     // The idle replies, produced once no node is open, are localized too.
-    expect(missingTranslations(applyCitizenReply(snapshot, "हाँ").reply, "reply")).toEqual([]);
+    expect(missingTranslations(applyIntent(snapshot, "affirmative").reply, "reply")).toEqual([]);
   });
 });
 
@@ -133,7 +133,7 @@ describe("workflow seeds", () => {
   test("grievance preparation leaves payment unresolved until a submitted response and confirmed credit", () => {
     const ready = confirmUntil(startCase("scholarship"), "grievance");
     expect(ready.artifacts).toContain("escalation-draft");
-    const unchanged = applyCitizenReply(ready, "yes").caseSnapshot;
+    const unchanged = applyIntent(ready, "affirmative").caseSnapshot;
     expect(currentNode(unchanged)?.id).toBe("grievance");
     expect(stateOf(unchanged, "verify-again")).toBe("blocked");
     const submitted = recordDeskReport(unchanged, {
@@ -142,7 +142,7 @@ describe("workflow seeds", () => {
     }).caseSnapshot;
     expect(currentNode(submitted)?.id).toBe("credit");
     expect(stateOf(submitted, "verify-again")).toBe("blocked");
-    const credited = applyCitizenReply(submitted, "yes").caseSnapshot;
+    const credited = applyIntent(submitted, "affirmative").caseSnapshot;
     expect(stateOf(credited, "verify-again")).toBe("done");
   });
 
@@ -212,10 +212,10 @@ describe("workflow seeds", () => {
   });
 });
 
-describe("applyCitizenReply", () => {
+describe("applyIntent", () => {
   test("an unclear reply repeats the question and changes nothing", () => {
     const caseSnapshot = startCase("bereavement");
-    const result = applyCitizenReply(caseSnapshot, "मुझे समझ नहीं आय");
+    const result = applyIntent(caseSnapshot, "unknown");
 
     expect(result.caseSnapshot).toEqual(caseSnapshot);
     expect(result.reply).toEqual(currentNode(caseSnapshot)!.ask);
@@ -223,7 +223,7 @@ describe("applyCitizenReply", () => {
 
   test("a negative reply never advances a confirmation-only node", () => {
     const caseSnapshot = confirmUntil(startCase("bereavement"), "form4-explain");
-    const result = applyCitizenReply(caseSnapshot, "नहीं, अभी नहीं");
+    const result = applyIntent(caseSnapshot, "negative");
 
     expect(result.caseSnapshot).toEqual(caseSnapshot);
     expect(stateOf(result.caseSnapshot, "name-check")).toBe("pending");
@@ -231,7 +231,7 @@ describe("applyCitizenReply", () => {
 
   test("declining the name check opens the correction path instead of the bank claim", () => {
     const atNameCheck = confirmUntil(startCase("bereavement"), "name-check");
-    const { caseSnapshot, reply } = applyCitizenReply(atNameCheck, "नहीं, नाम गलत है");
+    const { caseSnapshot, reply } = applyIntent(atNameCheck, "negative");
 
     expect(stateOf(caseSnapshot, "name-check")).toBe("blocked");
     expect(stateOf(caseSnapshot, "name-correction")).toBe("needs-you");
@@ -242,8 +242,8 @@ describe("applyCitizenReply", () => {
 
   test("confirming the correction records the declaration artifact once", () => {
     const atNameCheck = confirmUntil(startCase("bereavement"), "name-check");
-    const declined = applyCitizenReply(atNameCheck, "नहीं").caseSnapshot;
-    const corrected = applyCitizenReply(declined, "हाँ").caseSnapshot;
+    const declined = applyIntent(atNameCheck, "negative").caseSnapshot;
+    const corrected = applyIntent(declined, "affirmative").caseSnapshot;
 
     expect(corrected.artifacts).toEqual(["correction-declaration"]);
     expect(stateOf(corrected, "bank-claim")).toBe("needs-you");
@@ -252,9 +252,9 @@ describe("applyCitizenReply", () => {
 
 describe("citizen-reported desk responses", () => {
   test("records the citizen's evidence before opening the supported recovery path", () => {
-    const atTrace = applyCitizenReply(
+    const atTrace = applyIntent(
       confirmUntil(startCase("scholarship"), "pfms-trace"),
-      "yes",
+      "affirmative",
     ).caseSnapshot;
 
     const result = recordDeskReport(atTrace, {
@@ -281,9 +281,9 @@ describe("citizen-reported desk responses", () => {
   });
 
   test("records an unsupported response without inventing a recovery path", () => {
-    const atTrace = applyCitizenReply(
+    const atTrace = applyIntent(
       confirmUntil(startCase("scholarship"), "pfms-trace"),
-      "yes",
+      "affirmative",
     ).caseSnapshot;
 
     const result = recordDeskReport(atTrace, {
@@ -339,7 +339,7 @@ describe("advanceDay", () => {
 describe("complete journeys", () => {
   test("bereavement reaches completion with every demanded proof point", () => {
     const finished = confirmUntil(startCase("bereavement"), "case-done");
-    const done = applyCitizenReply(finished, "हाँ").caseSnapshot;
+    const done = applyIntent(finished, "affirmative").caseSnapshot;
 
     // The correction branch stays untaken here: this walk confirms the name.
     expect(stateOf(done, "name-correction")).toBe("pending");
@@ -347,8 +347,8 @@ describe("complete journeys", () => {
       .toBe(false);
     expect(stateOf(done, "case-done")).toBe("done");
     expect(done.artifacts).toEqual(["bank-letter", "rti-draft"]);
-    expect(t(applyCitizenReply(done, "हाँ").reply, "hi")).toContain("Case Card");
-    expect(t(applyCitizenReply(done, "हाँ").reply, "en")).toContain("Case Card");
+    expect(t(applyIntent(done, "affirmative").reply, "hi")).toContain("Case Card");
+    expect(t(applyIntent(done, "affirmative").reply, "en")).toContain("Case Card");
   });
 
   test("scholarship reuses the same engine through its bounce and breach", () => {
@@ -380,7 +380,7 @@ describe("recovery closes what it recovered from", () => {
     expect(t(nodeNote(rejected, "bank-claim")!, "en")).toContain("Citizen-reported");
     expect(isClearedBlocker(rejected, "bank-claim")).toBe(false);
 
-    const recovered = applyCitizenReply(rejected, "हाँ").caseSnapshot;
+    const recovered = applyIntent(rejected, "affirmative").caseSnapshot;
 
     expect(stateOf(recovered, "bank-claim")).toBe("done");
     expect(isClearedBlocker(recovered, "bank-claim")).toBe(true);
@@ -390,8 +390,8 @@ describe("recovery closes what it recovered from", () => {
 
   test("a declined name check is closed once the correction is added", () => {
     const atNameCheck = confirmUntil(startCase("bereavement"), "name-check");
-    const declined = applyCitizenReply(atNameCheck, "नहीं").caseSnapshot;
-    const corrected = applyCitizenReply(declined, "हाँ").caseSnapshot;
+    const declined = applyIntent(atNameCheck, "negative").caseSnapshot;
+    const corrected = applyIntent(declined, "affirmative").caseSnapshot;
 
     expect(stateOf(declined, "name-check")).toBe("blocked");
     expect(stateOf(corrected, "name-check")).toBe("done");
@@ -409,9 +409,9 @@ describe("recovery closes what it recovered from", () => {
   test.each(["bereavement", "scholarship"] as const)(
     "a finished %s case leaves nothing blocked",
     (workflowId) => {
-      const finished = applyCitizenReply(
+      const finished = applyIntent(
         confirmUntil(startCase(workflowId), "case-done"),
-        "हाँ",
+        "affirmative",
       ).caseSnapshot;
 
       expect(finished.nodes.filter((node) => node.state === "blocked")).toHaveLength(0);

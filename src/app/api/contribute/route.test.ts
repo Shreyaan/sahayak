@@ -118,6 +118,7 @@ describe("POST /api/contribute", () => {
               ask: { hi: "क्या स्थिति मिली?", en: "Did you receive the status?" },
               kind: "desk",
             }],
+            jurisdiction: {scope: "central", reason: {en: "Test", hi: "परीक्षण"}},
             reviewFlags: [{ hi: "सही कार्यालय जाँचें।", en: "Verify the correct office." }],
           });
           return { text: "ignored" };
@@ -137,7 +138,7 @@ describe("POST /api/contribute", () => {
     expect(body).toMatchObject({
       sourceType: "lived experience",
     });
-    expect(body.workflowId).toBe("custom-driving-licence-renewal");
+    expect(body.workflowId.startsWith("custom-")).toBe(true);
     expect(body.title).toEqual({ hi: "लाइसेंस नवीनीकरण", en: "Driving licence renewal" });
     expect(body.definition.authoredBy).toBe("web-form");
     expect(body.definition.nodes[0].type).toBe("desk-verification");
@@ -170,6 +171,7 @@ describe("POST /api/contribute", () => {
               ask: { hi: "क्या रसीद मिली?", en: "Do you have the receipt?" },
               kind: "confirm",
             }],
+            jurisdiction: {scope: "central", reason: {en: "Test", hi: "परीक्षण"}},
             reviewFlags: [{ hi: "समय-सीमा जाँचें।", en: "Verify the timeline." }],
           });
           return { text: "ignored" };

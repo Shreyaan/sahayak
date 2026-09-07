@@ -1,51 +1,43 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Locale } from "@/lib/locale";
 import type { SearchWorkflowsResponse } from "@/lib/search/search-workflows";
 import { isSyntheticSeed } from "@/lib/workflow";
 import { formatJurisdiction } from "@/lib/trust";
 import { TrustDisclosure } from "./trust-disclosure";
 
-type Mode = "search" | "chat";
-
 const copy = {
   en: {
-    label: "Describe your problem",
+    label: "What do you need help with?",
     placeholder:
       "For example: My scholarship shows released, but no money reached my bank…",
-    search: "Search",
-    chat: "Chat",
-    searchAction: "Search journeys",
-    chatAction: "Continue in Chat",
+    searchAction: "Search",
     answerLabel: "Your answer",
     answerPlaceholder: "Add one detail…",
     resultHeading: "Matching journeys",
     start: "Start this journey",
     searching: "Looking for a match…",
     error: "Search is unavailable right now. Your description is still here.",
-    unsupported: "We do not have a supported journey for this problem yet.",
+    unsupported: "Sorry — Sahayak can't help with this one right now.",
     unsupportedHelp:
-      "Your description is still here. Browse the published journeys below or use Contribute to propose an experience for review. No case has been started.",
+      "It only gives a next step when it has a checked journey for that problem. Rather than guess, it says no. Your description is still here — see what it can help with below, or send it to Contribute to get it added. No case has been started.",
   },
   hi: {
-    label: "अपनी समस्या बताइए",
+    label: "आपको किस काम में मदद चाहिए?",
     placeholder:
       "जैसे: छात्रवृत्ति जारी दिख रही है, लेकिन बैंक में पैसा नहीं आया…",
-    search: "खोजें",
-    chat: "बात करें",
-    searchAction: "यात्रा खोजें",
-    chatAction: "बातचीत जारी रखें",
+    searchAction: "खोजें",
     answerLabel: "आपका जवाब",
     answerPlaceholder: "एक जानकारी और जोड़ें…",
     resultHeading: "मिलती-जुलती यात्राएँ",
     start: "यह यात्रा शुरू करें",
     searching: "सही यात्रा खोज रहे हैं…",
     error: "अभी खोज उपलब्ध नहीं है। आपकी लिखी समस्या यहीं सुरक्षित है।",
-    unsupported: "इस समस्या के लिए अभी समर्थित यात्रा उपलब्ध नहीं है।",
+    unsupported: "क्षमा करें — सहायक अभी इस काम में मदद नहीं कर सकता।",
     unsupportedHelp:
-      "आपका विवरण यहीं है। नीचे प्रकाशित यात्राएँ देखें या योगदान से अपना अनुभव समीक्षा के लिए दें। कोई केस शुरू नहीं हुआ है।",
+      "सहायक अगला कदम तभी बताता है जब उसके पास जाँची हुई यात्रा हो। अंदाज़ा लगाने से बेहतर है साफ़ मना करना। आपका विवरण यहीं सुरक्षित है — नीचे देखें किन कामों में मदद मिल सकती है, या योगदान से इसे जुड़वाइए। कोई केस शुरू नहीं हुआ है।",
   },
 } as const;
 
@@ -85,12 +77,13 @@ export function CitizenDiscovery({
   onStart: (workflowVersionId: string) => Promise<void>;
 }) {
   const text = copy[locale];
-  const [mode, setMode] = useState<Mode>("search");
   const [problem, setProblem] = useState("");
   const [answer, setAnswer] = useState("");
   const [response, setResponse] = useState<SearchWorkflowsResponse>();
   const [startingVersionId, setStartingVersionId] = useState<string>();
   const starting = useRef(false);
+  const [confirmed, setConfirmed] = useState<string[]>([]);
+  useEffect(() => setConfirmed([]), [response]);
   const searchRevision = useRef(0);
   const search = useMutation({
     mutationFn: ({
@@ -111,9 +104,24 @@ export function CitizenDiscovery({
     onSuccess: (next, input) => {
       if (input.revision !== searchRevision.current) return;
       setResponse(next);
-      if (next.shouldClarify) setMode("chat");
     },
   });
+
+  useEffect(() => {
+    // A result belongs to the scope and language that produced it. Keep the words,
+    // but invalidate both displayed results and any outstanding response.
+    searchRevision.current += 1;
+    setResponse(undefined);
+    setAnswer("");
+  }, [stateCode, districtCode, locale]);
+
+  function chooseExample(query: string) {
+    setProblem(query);
+    setAnswer("");
+    setResponse(undefined);
+    searchRevision.current += 1;
+    search.mutate({ query, clarificationAttempt: 0, revision: searchRevision.current });
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -140,31 +148,14 @@ export function CitizenDiscovery({
 
   return (
     <section className="grid gap-4" aria-label={text.label}>
-      <div
-        className="grid w-full max-w-48 grid-cols-2 gap-0.5 rounded-lg border border-[var(--line)] bg-[#f7f3ec] p-0.5"
-        role="tablist"
-        aria-label="Discovery mode"
-      >
-        <button
-          className="min-h-8 rounded-[9px] px-3 py-1 text-sm font-extrabold text-[var(--green)] aria-selected:bg-[var(--green)] aria-selected:text-white"
-          type="button"
-          role="tab"
-          aria-selected={mode === "search"}
-          onClick={() => setMode("search")}
-        >
-          {text.search}
-        </button>
-        <button
-          className="min-h-8 rounded-[9px] px-3 py-1 text-sm font-extrabold text-[var(--green)] aria-selected:bg-[var(--green)] aria-selected:text-white"
-          type="button"
-          role="tab"
-          aria-selected={mode === "chat"}
-          onClick={() => setMode("chat")}
-        >
-          {text.chat}
-        </button>
+      <div className="flex flex-wrap gap-2" aria-label={locale === "hi" ? "आम समस्याएँ" : "Common problems"}>
+        {(locale === "hi"
+          ? ["छात्रवृत्ति का पैसा नहीं आया", "आधार अपडेट अटका है", "PF निकासी अटकी है"]
+          : ["Scholarship money hasn’t arrived", "Aadhaar update is stuck", "PF withdrawal is stuck"]
+        ).map((example) => <button key={example} type="button" disabled={search.isPending}
+          className="min-h-11 rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-left text-sm font-semibold text-[var(--green)] hover:bg-[#edf4ee] disabled:opacity-50"
+          onClick={() => chooseExample(example)}>{example}</button>)}
       </div>
-
       <form className="grid gap-2.5" onSubmit={submit}>
         <label className="text-sm font-extrabold" htmlFor="citizen-problem">
           {text.label}
@@ -184,7 +175,7 @@ export function CitizenDiscovery({
           maxLength={500}
         />
 
-        {mode === "chat" && response?.clarificationQuestion && (
+        {response?.shouldClarify && response.clarificationQuestion && (
           <div
             className="grid gap-2 rounded-xl border-l-4 border-[var(--marigold)] bg-[#fff8e8] p-3.5"
             role="status"
@@ -216,9 +207,7 @@ export function CitizenDiscovery({
         >
           {search.isPending
             ? text.searching
-            : mode === "search"
-              ? text.searchAction
-              : text.chatAction}
+            : text.searchAction}
         </button>
       </form>
 
@@ -267,10 +256,14 @@ export function CitizenDiscovery({
                   <li key={reason}>{reason}</li>
                 ))}
               </ul>
+              {result.requiresConfirmation && <label className="mt-2 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={confirmed.includes(result.workflowVersionId)} onChange={event => setConfirmed(current => event.target.checked ? [...current, result.workflowVersionId] : current.filter(id => id !== result.workflowVersionId))} />
+                {locale === "hi" ? "हाँ, यह मेरी समस्या है" : "Yes, this describes my situation"}
+              </label>}
               <button
                 className="mt-2 min-h-11 rounded-xl bg-(--marigold) font-extrabold text-[#2f250f] disabled:opacity-50"
                 type="button"
-                disabled={starting.current}
+                disabled={starting.current || (result.requiresConfirmation && !confirmed.includes(result.workflowVersionId))}
                 onClick={() => void startResult(result.workflowVersionId)}
               >
                 {startingVersionId === result.workflowVersionId
