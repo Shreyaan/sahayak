@@ -315,7 +315,6 @@ export function HomeContent() {
     setAnswer("");
     setFeedback("");
     setReportStepId(undefined);
-    window.scrollTo({ top: 0 });
   }
 
   function resumeCase(id: string) {
@@ -513,11 +512,19 @@ export function HomeContent() {
       typeof navigator !== "undefined" && typeof navigator.share === "function"
     );
   }, []);
+  const lastCaseView = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!current) return;
-    actionHeading.current?.focus({ preventScroll: true });
+    const view = `${contributorMode ? "contributor" : "citizen"}:${caseId ?? "home"}`;
+    const enteringView = lastCaseView.current !== view;
+    lastCaseView.current = view;
+    if (current && !contributorMode) actionHeading.current?.focus({ preventScroll: true });
+    if (enteringView) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      return;
+    }
+    if (!current || contributorMode) return;
     actionHeading.current?.scrollIntoView?.({ block: "start" });
-  }, [current?.id, caseId, unmatched?.recordedAt]);
+  }, [current?.id, caseId, contributorMode, unmatched?.recordedAt]);
   /** The feedback form rates the step just acted on, which is not the step now shown above it. */
   const feedbackStepId = reportStepId ?? caseSnapshot?.reports?.at(-1)?.stepId ?? caseSnapshot?.nodes.findLast((node) => node.state === "done" && node.id !== "case-done")?.id;
   const reportStepTitle =

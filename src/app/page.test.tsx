@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
   cleanup,
   fireEvent,
@@ -489,4 +489,16 @@ test("restored cases retain feedback for the recorded step and visible document 
   expect(await screen.findByText("Feedback on the previous step")).toBeDefined();
   expect(screen.getByRole("heading", {name: "Bank seeding checklist"})).toBeDefined();
   expect(screen.getByText(/Your steps/)).toBeDefined();
+});
+
+
+test("opening a saved case starts at the page top instead of jumping to its action", async () => {
+  mockCaseApi();
+  const scroll = spyOn(window, "scrollTo").mockImplementation(() => {});
+  renderHome({searchParams: `?caseId=${caseId}`});
+  const heading = await screen.findByRole("heading", {name: "Check where your scholarship payment is stuck"});
+  expect(scroll).toHaveBeenLastCalledWith({top: 0, left: 0, behavior: "instant"});
+  fireEvent.click(screen.getByRole("button", {name: "Start over"}));
+  await screen.findByRole("heading", {name: "Government work stuck?"});
+  expect(scroll).toHaveBeenLastCalledWith({top: 0, left: 0, behavior: "instant"});
 });
