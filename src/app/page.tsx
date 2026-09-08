@@ -611,7 +611,10 @@ export function HomeContent() {
         >
           {common("brand")}
         </button>
-        <div className="flex flex-wrap items-center justify-end gap-x-[10px] gap-y-1">
+        <nav aria-label={locale === "hi" ? "मुख्य नेविगेशन" : "Main navigation"} className="flex flex-wrap items-center justify-end gap-x-[10px] gap-y-1">
+          <a href="/about" className="inline-flex min-h-11 items-center px-1 text-[.82rem] font-semibold text-[var(--green)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2">
+            {locale === "hi" ? "सहायक के बारे में" : "About Sahayak"}
+          </a>
           <DemoDetails locale={locale} />
           <LanguageSwitcher />
           <button
@@ -622,7 +625,7 @@ export function HomeContent() {
           >
             {contributorMode ? text("mode.citizen") : text("mode.contribute")}
           </button>
-        </div>
+        </nav>
       </header>
 
       {contributorMode ? (
@@ -982,11 +985,7 @@ export function HomeContent() {
 
         </>
       )}
-      <footer className="mt-6 border-t border-[var(--line)] pt-2">
-        <a href="/about" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--green)] underline underline-offset-4">
-          {locale === "hi" ? "सहायक के बारे में" : "About Sahayak"}
-        </a>
-      </footer>
+
     </main>
   );
 }
