@@ -53,3 +53,24 @@ test("provider failure offers only explicitly unconfirmed retrieved options", as
   expect(result.results.length).toBeGreaterThan(0);
   expect(result.results.every(row => row.requiresConfirmation)).toBe(true);
 });
+
+
+test("small-catalogue assessment starts while query embedding is still pending", async () => {
+  let release!: () => void;
+  const embedding = new Promise<number[]>((_, reject) => {release = () => reject(new Error("test provider unavailable"));});
+  let assessed!: () => void;
+  const started = new Promise<void>(resolve => {assessed = resolve;});
+  const search = searchWorkflows({query: "scholorship ka paisa nahi aaya", locale: "en"}, async ({candidates}) => {
+    expect(candidates.length).toBeLessThanOrEqual(8);
+    assessed();
+    return {decision: "match", workflowVersionId: "scholarship-v6"};
+  }, () => embedding);
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    await Promise.race([started, new Promise((_, reject) => {timer = setTimeout(() => reject(new Error("Assessment waited for embedding")), 1000);})]);
+  } finally {
+    clearTimeout(timer!);
+    release();
+  }
+  expect((await search).results[0]?.workflowVersionId).toBe("scholarship-v6");
+});

@@ -46,7 +46,7 @@ export type SearchWorkflowsResponse = {
 type ScoreRow = { workflowVersionId: string; score: number };
 let warnedAboutSemanticSimilarity = false;
 
-export async function searchWorkflows(input: SearchWorkflowsInput, assess: AssessWorkflowFit = assessWorkflowFit): Promise<SearchWorkflowsResponse> {
+export async function searchWorkflows(input: SearchWorkflowsInput, assess: AssessWorkflowFit = assessWorkflowFit, embedQuery: typeof embedSearchQuery = embedSearchQuery): Promise<SearchWorkflowsResponse> {
   const parsed = searchWorkflowsInputSchema.parse(input);
   const request = { ...parsed, query: redactCitizenText(parsed.query) };
   const db = getDatabase();
@@ -79,7 +79,34 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
     allowedScope,
   );
 
-  const semanticRowsPromise = embedSearchQuery(request.query)
+  const loadDisplayRows = (ids: string[]) => db
+    .select({
+      workflowId: workflowVersionsTable.workflowId,
+      workflowVersionId: workflowVersionsTable.id,
+      definition: workflowVersionsTable.definition,
+      title: searchDocumentsTable.title,
+      summary: searchDocumentsTable.summary,
+      scope: workflowVersionsTable.scope,
+      stateCode: workflowVersionsTable.stateCode,
+      districtCode: workflowVersionsTable.districtCode,
+      trust: workflowVersionsTable.trust,
+    })
+    .from(workflowVersionsTable)
+    .innerJoin(searchDocumentsTable, and(
+      eq(searchDocumentsTable.workflowVersionId, workflowVersionsTable.id),
+      eq(searchDocumentsTable.locale, request.locale),
+    ))
+    .where(and(published, inArray(workflowVersionsTable.id, ids)));
+  // With a small catalogue, assess the eligible published set alongside retrieval.
+  // Larger catalogues still assess only the retrieved shortlist.
+  const earlyRows = currentVersionIds.length <= 8 ? loadDisplayRows(currentVersionIds) : undefined;
+  const assessRows = (rows: Awaited<ReturnType<typeof loadDisplayRows>>) => assess({
+    query: request.query, locale: request.locale,
+    candidates: rows.map(row => ({workflowVersionId: row.workflowVersionId, definition: workflowDefinitionSchema.parse(row.definition)})),
+  });
+  const earlyFit = earlyRows?.then(assessRows);
+
+  const semanticRowsPromise = embedQuery(request.query)
     .then((embedding) => db
       .select({
         workflowVersionId: workflowVersionsTable.id,
@@ -99,7 +126,7 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
       return [];
     });
 
-  const fullTextRows = await db
+  const fullTextRowsPromise = db
     .select({
       workflowVersionId: workflowVersionsTable.id,
       score: sql<number>`max(ts_rank_cd(to_tsvector('simple', ${searchDocumentsTable.searchText}), websearch_to_tsquery('simple', ${request.query})))`,
@@ -109,9 +136,9 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
     .where(and(published, sql`to_tsvector('simple', ${searchDocumentsTable.searchText}) @@ websearch_to_tsquery('simple', ${request.query})`))
     .groupBy(workflowVersionsTable.id)
     .orderBy(sql`2 desc`)
-    .limit(20) as ScoreRow[];
+    .limit(20) as Promise<ScoreRow[]>;
 
-  const tokenRows = await db
+  const tokenRowsPromise = db
     .select({
       workflowVersionId: workflowVersionsTable.id,
       score: sql<number>`max((
@@ -132,9 +159,9 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
         and lower(${searchDocumentsTable.searchText}) like '%' || token || '%'
     )) > 0`)
     .orderBy(sql`2 desc`)
-    .limit(20) as ScoreRow[];
+    .limit(20) as Promise<ScoreRow[]>;
 
-  const trigramRows = await db
+  const trigramRowsPromise = db
     .select({
       workflowVersionId: workflowVersionsTable.id,
       score: sql<number>`max(word_similarity(lower(${request.query}), lower(${searchDocumentsTable.searchText})))`,
@@ -145,8 +172,8 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
     .groupBy(workflowVersionsTable.id)
     .having(sql`max(word_similarity(lower(${request.query}), lower(${searchDocumentsTable.searchText}))) >= 0.18`)
     .orderBy(sql`2 desc`)
-    .limit(20) as ScoreRow[];
-  const semanticRows = await semanticRowsPromise;
+    .limit(20) as Promise<ScoreRow[]>;
+  const [fullTextRows, tokenRows, trigramRows, semanticRows] = await Promise.all([fullTextRowsPromise, tokenRowsPromise, trigramRowsPromise, semanticRowsPromise]);
 
   const evidence = new Map<string, CandidateEvidence>();
   for (const [index, row] of fullTextRows.entries()) {
@@ -196,44 +223,24 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
   }
 
   const ranked = rankCandidates([...evidence.values()]);
-  if (!ranked.length) return { results: [], needsLocation: false, shouldClarify: true };
+  if (!ranked.length && !earlyFit) return { results: [], needsLocation: false, shouldClarify: true };
   // Assess a bounded shortlist, then apply the caller's display limit.
   const selected = ranked.slice(0, 8);
-  const displayRows = await db
-    .select({
-      workflowId: workflowVersionsTable.workflowId,
-      workflowVersionId: workflowVersionsTable.id,
-      definition: workflowVersionsTable.definition,
-      title: searchDocumentsTable.title,
-      summary: searchDocumentsTable.summary,
-      scope: workflowVersionsTable.scope,
-      stateCode: workflowVersionsTable.stateCode,
-      districtCode: workflowVersionsTable.districtCode,
-      trust: workflowVersionsTable.trust,
-    })
-    .from(workflowVersionsTable)
-    .innerJoin(searchDocumentsTable, and(
-      eq(searchDocumentsTable.workflowVersionId, workflowVersionsTable.id),
-      eq(searchDocumentsTable.locale, request.locale),
-    ))
-    .where(and(published, inArray(workflowVersionsTable.id, selected.map((item) => item.workflowVersionId))));
-  const byId = new Map(displayRows.map((row) => [row.workflowVersionId, row]));
-  const fit = await assess({ query: request.query, locale: request.locale, candidates: displayRows.map(row => ({
-    workflowVersionId: row.workflowVersionId, definition: workflowDefinitionSchema.parse(row.definition),
-  })) });
+  const displayRows = await (earlyRows ?? loadDisplayRows(selected.map(item => item.workflowVersionId)));
+  const byId = new Map(displayRows.map(row => [row.workflowVersionId, row]));
+  const fit = await (earlyFit ?? assessRows(displayRows));
   if (fit.decision === "unsupported") return { results: [], needsLocation: false, shouldClarify: false, unsupported: true };
   if (fit.decision === "clarify") return { results: [], needsLocation: false, shouldClarify: true, clarificationQuestion: fit.question };
-  const visible = (fit.decision === "match"
-    ? selected.filter(candidate => candidate.workflowVersionId === fit.workflowVersionId)
-    : selected).slice(0, request.limit);
+  const visible = fit.decision === "match"
+    ? (byId.has(fit.workflowVersionId) ? [fit.workflowVersionId] : [])
+    : selected.slice(0, request.limit).map(candidate => candidate.workflowVersionId);
+  if (!visible.length && fit.decision === "unavailable") return {results: [], needsLocation: false, shouldClarify: true};
 
 
   return {
-    results: visible.flatMap((candidate) => {
-      const row = byId.get(candidate.workflowVersionId);
+    results: visible.flatMap((id) => {
+      const row = byId.get(id);
       if (!row) return [];
-      const semantic = (candidate.semanticScore ?? 0) >= 0.55;
-      const lexical = candidate.fullTextRank !== null;
       return [{
         workflowId: row.workflowId,
         workflowVersionId: row.workflowVersionId,
@@ -245,11 +252,7 @@ export async function searchWorkflows(input: SearchWorkflowsInput, assess: Asses
         matchReasons: [
           fit.decision !== "match"
             ? (request.locale === "hi" ? "AI मिलान उपलब्ध नहीं है। शुरू करने से पहले जाँचें कि यह आपकी समस्या है।" : "AI matching is unavailable. Check that this describes your situation before starting.")
-            : semantic
-            ? (request.locale === "hi" ? "आपकी समस्या का अर्थ इस यात्रा से मेल खाता है" : "The meaning of your problem matches this journey")
-            : lexical
-            ? (request.locale === "hi" ? "आपके शब्द इस यात्रा से मेल खाते हैं" : "Your words match this journey")
-            : (request.locale === "hi" ? "मिलती-जुलती वर्तनी मिली" : "A close spelling matched"),
+            : (request.locale === "hi" ? "आपकी समस्या का अर्थ इस यात्रा से मेल खाता है" : "The meaning of your problem matches this journey"),
         ],
       }];
     }),

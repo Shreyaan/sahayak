@@ -22,6 +22,8 @@ export async function embedSearchQuery(value: string): Promise<number[]> {
   const result = await embed({
     model: openrouter.textEmbeddingModel(EMBEDDING_MODEL),
     value,
+    abortSignal: AbortSignal.timeout(2_000),
+    maxRetries: 0,
   });
   return validateEmbedding(result.embedding);
 }
