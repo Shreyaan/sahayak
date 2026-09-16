@@ -143,6 +143,3 @@ Stop `next dev` before building: both commands write to `.next`.
 Sahayak is an actively developed prototype focused on navigation and recovery,
 not end-to-end government-service execution. The next trust milestone is a
 fully verified, multi-reviewer publication loop backed by real domain partners.
-
-Deployment and demonstration details are recorded in the
-[submission pack](docs/submission/2026-09-06-demo-and-submission.md).
